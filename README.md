@@ -74,39 +74,44 @@ python3 -m etf_radar.cli refresh --preset core --preset bond --window-set full -
 
 `refresh` 会在一轮抓取后检查每只 ETF 是否有规模和走势数据，缺数据就等 `--pass-sleep`（默认 20 秒）后再抓一轮，最多 `--max-passes` 轮。价格缓存让后续轮次只补缺失部分。
 
-装成 macOS 定时任务（工作日 21:00 自动刷新 + 常驻本地服务）：
+本地常驻服务（可选，用于本机查看）：
 
 ```bash
-bash automation/install.sh
+bash automation/install.sh   # 只装 http://127.0.0.1:8765 的 serve agent
 ```
 
-安装后：
-
-- 看板地址：`http://127.0.0.1:8765/dashboard/index.html`，页面右上角「自动更新」开关默认打开，每 5 分钟检查一次新数据，数据更新后自动重渲染。
-- 数据刷新：工作日 21:00 自动运行（沪深交易所份额数据晚间发布），日志在 `~/Library/Logs/etf-radar/refresh.log`。
-- 手动触发一次刷新：`launchctl kickstart gui/$(id -u)/com.etf.radar.refresh`
+- 页面右上角「自动更新」开关默认打开，每 5 分钟检查一次新数据，数据更新后自动重渲染。
 - 卸载：`bash automation/uninstall.sh`
 
-> macOS 说明：launchd 自身无法在 `~/Desktop` 等 TCC 保护目录写日志（否则按需触发会 `EX_CONFIG` 失败），因此 launchd 日志放在 `~/Library/Logs/etf-radar/`；数据快照仍写在项目目录内。若项目不在 Desktop/Documents 等受保护目录，日志位置无所谓。
+> macOS 说明：launchd 自身无法在 `~/Desktop` 等 TCC 保护目录写日志（否则按需触发会 `EX_CONFIG` 失败），因此 launchd 日志放在 `~/Library/Logs/etf-radar/`；数据快照仍写在项目目录内。
 
 `dist/etf-radar.html` 是数据内嵌的单文件版本，适合分享，不支持自动更新（开关会自动隐藏）。
 
-## 分享给朋友（GitHub Pages 自动更新站）
+## 分享给朋友（GitHub Pages + 云端自动更新）
 
-把看板发布成一个公开网址，朋友打开即可看，且每天自动更新。数据在本机抓取（境内数据源在本机最稳），再推送到 GitHub，由 Pages 托管。
+看板发布成公开网址，朋友打开即可看，**数据由 GitHub Actions 在云端每天自动更新，本机不用开机**。已实测 GitHub 海外服务器能完整拉到东财/新浪/沪深交易所数据（0 缺失）。
 
-站点目录 `docs/` 由 `build-pages` 组装（`index.html` + `app.js` + `styles.css` + 同目录 `dashboard_snapshot.json`），保留 5 分钟自动轮询，推新数据后朋友页面无需刷新即可更新。
+- 站点：`https://<user>.github.io/etf-radar/`，Pages 源 `main` 分支 `/docs`。
+- 更新：`.github/workflows/refresh.yml` 工作日 13:00 UTC（北京 21:00）云端抓数 → 重建 `docs/` → 提交推送 → Pages 重建。带**完整性安全阀**：只有 0 缺失才发布，抓不全就跳过、绝不覆盖线上。
+- 站点目录 `docs/` 由 `build-pages` 组装（`index.html` + `app.js` + `styles.css` + 同目录 `dashboard_snapshot.json`），保留 5 分钟轮询，推新数据后朋友页面无需刷新即可更新。
 
 首次部署（`gh` CLI 已登录时可全自动）：
 
 ```bash
-python3 -m etf_radar.cli refresh --preset core --preset bond --preset dividend --no-proxy --pages-out docs
+python3 -m etf_radar.cli build-pages --snapshot data/dashboard_snapshot.json --out docs
 git init && git add -A && git commit -m "init"
 gh repo create etf-radar --public --source=. --push
-gh api -X POST repos/{owner}/etf-radar/pages -f build_type=legacy -f 'source[branch]=main' -f 'source[path]=/docs'
+gh api -X POST repos/{owner}/etf-radar/pages -f 'source[branch]=main' -f 'source[path]=/docs'
+gh workflow run refresh-data          # 手动触发一次云端更新
 ```
 
-之后 `automation/install.sh` 会把定时任务指向 `automation/refresh_and_publish.sh`：工作日 21:00 抓数 → 重建 `docs/` → `git commit` + `push` → Pages 自动重建。`gh auth setup-git` 让推送非交互进行。
+**可选：本机也跑一份备份更新**（云端挂了时兜底，工作日 21:30 晚于云端）：
+
+```bash
+ETF_LOCAL_REFRESH=1 bash automation/install.sh
+```
+
+本机与云端两个推送方都会先 `git pull --rebase` 再推，互不冲突。
 
 ## 本地开发预览
 
