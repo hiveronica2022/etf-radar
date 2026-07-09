@@ -3,7 +3,7 @@
     "version": 1,
     "status": "ready",
     "as_of": "2026-07-08",
-    "generated_at": "2026-07-09T03:04:33.275749+00:00",
+    "generated_at": "2026-07-09T03:14:10.020568+00:00",
     "stale_after_trading_days": 3,
     "unit": {
       "share_delta_yi": "亿份",
@@ -1684,7 +1684,7 @@
           "return_pct": -2.77,
           "anchor_date": "2026-06-08",
           "price_anchor_date": "2026-06-08",
-          "rank": 21
+          "rank": 20
         },
         "3M": {
           "share_delta_yi": 25.75,
@@ -3343,7 +3343,7 @@
           "return_pct": -8.58,
           "anchor_date": "2026-06-08",
           "price_anchor_date": "2026-06-08",
-          "rank": 20
+          "rank": 21
         },
         "3M": {
           "share_delta_yi": 15.65,
