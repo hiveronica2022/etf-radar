@@ -1,0 +1,468 @@
+{
+  "meta": {
+    "version": 1,
+    "status": "ready",
+    "as_of": "2026-06-24",
+    "generated_at": "2026-06-25T03:14:45.676669+00:00",
+    "unit": {
+      "share_delta_yi": "亿份",
+      "amount_delta_100m": "亿元",
+      "return_pct": "%",
+      "scale_100m": "亿元"
+    }
+  },
+  "summary": {
+    "etf_count": 5,
+    "total_scale_100m": 2784.17,
+    "flow_1d_100m": -117.37,
+    "flow_1w_100m": -239.66
+  },
+  "windows": [
+    {
+      "key": "1D",
+      "label": "最近1日",
+      "days": 1
+    },
+    {
+      "key": "1W",
+      "label": "最近1周",
+      "days": 7
+    },
+    {
+      "key": "2W",
+      "label": "最近2周",
+      "days": 14
+    },
+    {
+      "key": "1M",
+      "label": "最近1月",
+      "days": 30
+    },
+    {
+      "key": "3M",
+      "label": "最近3月",
+      "days": 90
+    },
+    {
+      "key": "6M",
+      "label": "最近6月",
+      "days": 180
+    },
+    {
+      "key": "YTD",
+      "label": "今年以来",
+      "ytd": true
+    },
+    {
+      "key": "12M",
+      "label": "最近12月",
+      "days": 365
+    }
+  ],
+  "rows": [
+    {
+      "code": "159600",
+      "name": "科创债ETF嘉实",
+      "exchange": "SZSE",
+      "category": "债券",
+      "manager": "嘉实",
+      "listed_date": null,
+      "scale_100m": 298.72,
+      "latest_price": 101.303,
+      "latest_share_yi": 2.95,
+      "tag": "追高",
+      "windows": {
+        "1D": {
+          "share_delta_yi": 0.32,
+          "amount_delta_100m": 32.91,
+          "return_pct": -0.02,
+          "anchor_date": "2026-06-23",
+          "price_anchor_date": "2026-06-23",
+          "rank": 1
+        },
+        "1W": {
+          "share_delta_yi": 0.41,
+          "amount_delta_100m": 41.56,
+          "return_pct": 0.11,
+          "anchor_date": "2026-06-17",
+          "price_anchor_date": "2026-06-17",
+          "rank": 1
+        },
+        "2W": {
+          "share_delta_yi": 0.49,
+          "amount_delta_100m": 50.12,
+          "return_pct": 0.02,
+          "anchor_date": "2026-06-10",
+          "price_anchor_date": "2026-06-10",
+          "rank": 2
+        },
+        "1M": {
+          "share_delta_yi": 0.72,
+          "amount_delta_100m": 72.81,
+          "return_pct": 0.27,
+          "anchor_date": "2026-05-25",
+          "price_anchor_date": "2026-05-25",
+          "rank": 1
+        },
+        "3M": {
+          "share_delta_yi": 0.3,
+          "amount_delta_100m": 30.69,
+          "return_pct": 0.81,
+          "anchor_date": "2026-03-26",
+          "price_anchor_date": "2026-03-26",
+          "rank": 2
+        },
+        "6M": {
+          "share_delta_yi": -1.24,
+          "amount_delta_100m": -125.34,
+          "return_pct": 1.34,
+          "anchor_date": "2025-12-26",
+          "price_anchor_date": "2025-12-26",
+          "rank": 2
+        },
+        "YTD": {
+          "share_delta_yi": -1.42,
+          "amount_delta_100m": -144.07,
+          "return_pct": 1.44,
+          "anchor_date": "2025-12-31",
+          "price_anchor_date": "2025-12-31",
+          "rank": 2
+        },
+        "12M": {
+          "share_delta_yi": null,
+          "amount_delta_100m": null,
+          "return_pct": null,
+          "anchor_date": null,
+          "price_anchor_date": null,
+          "rank": null
+        }
+      }
+    },
+    {
+      "code": "159516",
+      "name": "半导体设备ETF国泰",
+      "exchange": "SZSE",
+      "category": "科技",
+      "manager": "国泰",
+      "listed_date": null,
+      "scale_100m": 328.9,
+      "latest_price": 1.653,
+      "latest_share_yi": 198.97,
+      "tag": "追高",
+      "windows": {
+        "1D": {
+          "share_delta_yi": 5.88,
+          "amount_delta_100m": 9.72,
+          "return_pct": 5.42,
+          "anchor_date": "2026-06-23",
+          "price_anchor_date": "2026-06-23",
+          "rank": 2
+        },
+        "1W": {
+          "share_delta_yi": 22.52,
+          "amount_delta_100m": 37.23,
+          "return_pct": 10.42,
+          "anchor_date": "2026-06-17",
+          "price_anchor_date": "2026-06-17",
+          "rank": 2
+        },
+        "2W": {
+          "share_delta_yi": 34.0,
+          "amount_delta_100m": 56.2,
+          "return_pct": 28.04,
+          "anchor_date": "2026-06-10",
+          "price_anchor_date": "2026-06-10",
+          "rank": 1
+        },
+        "1M": {
+          "share_delta_yi": -5.98,
+          "amount_delta_100m": -9.88,
+          "return_pct": 22.44,
+          "anchor_date": "2026-05-25",
+          "price_anchor_date": "2026-05-25",
+          "rank": 3
+        },
+        "3M": {
+          "share_delta_yi": 78.89,
+          "amount_delta_100m": 130.4,
+          "return_pct": 1.97,
+          "anchor_date": "2026-03-26",
+          "price_anchor_date": "2026-03-26",
+          "rank": 1
+        },
+        "6M": {
+          "share_delta_yi": 144.36,
+          "amount_delta_100m": 238.62,
+          "return_pct": 5.76,
+          "anchor_date": "2025-12-26",
+          "price_anchor_date": "2025-12-26",
+          "rank": 1
+        },
+        "YTD": {
+          "share_delta_yi": 140.45,
+          "amount_delta_100m": 232.16,
+          "return_pct": 7.13,
+          "anchor_date": "2025-12-31",
+          "price_anchor_date": "2025-12-31",
+          "rank": 1
+        },
+        "12M": {
+          "share_delta_yi": 176.19,
+          "amount_delta_100m": 291.24,
+          "return_pct": 59.25,
+          "anchor_date": "2025-06-24",
+          "price_anchor_date": "2025-06-24",
+          "rank": 1
+        }
+      }
+    },
+    {
+      "code": "159915",
+      "name": "创业板ETF易方达",
+      "exchange": "SZSE",
+      "category": "宽基",
+      "manager": "易方达",
+      "listed_date": null,
+      "scale_100m": 474.49,
+      "latest_price": 4.258,
+      "latest_share_yi": 111.43,
+      "tag": "追高",
+      "windows": {
+        "1D": {
+          "share_delta_yi": -2.2,
+          "amount_delta_100m": -9.37,
+          "return_pct": 1.14,
+          "anchor_date": "2026-06-23",
+          "price_anchor_date": "2026-06-23",
+          "rank": 3
+        },
+        "1W": {
+          "share_delta_yi": 6.2,
+          "amount_delta_100m": 26.4,
+          "return_pct": 1.79,
+          "anchor_date": "2026-06-17",
+          "price_anchor_date": "2026-06-17",
+          "rank": 3
+        },
+        "2W": {
+          "share_delta_yi": 5.54,
+          "amount_delta_100m": 23.59,
+          "return_pct": 10.03,
+          "anchor_date": "2026-06-10",
+          "price_anchor_date": "2026-06-10",
+          "rank": 3
+        },
+        "1M": {
+          "share_delta_yi": 0.17,
+          "amount_delta_100m": 0.72,
+          "return_pct": 5.55,
+          "anchor_date": "2026-05-25",
+          "price_anchor_date": "2026-05-25",
+          "rank": 2
+        },
+        "3M": {
+          "share_delta_yi": -45.51,
+          "amount_delta_100m": -193.78,
+          "return_pct": 30.49,
+          "anchor_date": "2026-03-26",
+          "price_anchor_date": "2026-03-26",
+          "rank": 3
+        },
+        "6M": {
+          "share_delta_yi": -206.02,
+          "amount_delta_100m": -877.23,
+          "return_pct": 31.99,
+          "anchor_date": "2025-12-26",
+          "price_anchor_date": "2025-12-26",
+          "rank": 3
+        },
+        "YTD": {
+          "share_delta_yi": -203.59,
+          "amount_delta_100m": -866.89,
+          "return_pct": 33.65,
+          "anchor_date": "2025-12-31",
+          "price_anchor_date": "2025-12-31",
+          "rank": 3
+        },
+        "12M": {
+          "share_delta_yi": -289.09,
+          "amount_delta_100m": -1230.95,
+          "return_pct": 108.32,
+          "anchor_date": "2025-06-24",
+          "price_anchor_date": "2025-06-24",
+          "rank": 2
+        }
+      }
+    },
+    {
+      "code": "510330",
+      "name": "沪深300ETF华夏",
+      "exchange": "SSE",
+      "category": "宽基",
+      "manager": "华夏",
+      "listed_date": null,
+      "scale_100m": 545.28,
+      "latest_price": 5.176,
+      "latest_share_yi": 105.35,
+      "tag": "止盈",
+      "windows": {
+        "1D": {
+          "share_delta_yi": -11.92,
+          "amount_delta_100m": -61.72,
+          "return_pct": 0.5,
+          "anchor_date": "2026-06-23",
+          "price_anchor_date": "2026-06-23",
+          "rank": 4
+        },
+        "1W": {
+          "share_delta_yi": -26.36,
+          "amount_delta_100m": -136.44,
+          "return_pct": 0.21,
+          "anchor_date": "2026-06-17",
+          "price_anchor_date": "2026-06-17",
+          "rank": 4
+        },
+        "2W": {
+          "share_delta_yi": -37.94,
+          "amount_delta_100m": -196.35,
+          "return_pct": 4.06,
+          "anchor_date": "2026-06-10",
+          "price_anchor_date": "2026-06-10",
+          "rank": 4
+        },
+        "1M": {
+          "share_delta_yi": -41.18,
+          "amount_delta_100m": -213.12,
+          "return_pct": 0.7,
+          "anchor_date": "2026-05-25",
+          "price_anchor_date": "2026-05-25",
+          "rank": 4
+        },
+        "3M": {
+          "share_delta_yi": -89.59,
+          "amount_delta_100m": -463.74,
+          "return_pct": 10.81,
+          "anchor_date": "2026-03-26",
+          "price_anchor_date": "2026-03-26",
+          "rank": 4
+        },
+        "6M": {
+          "share_delta_yi": -369.48,
+          "amount_delta_100m": -1912.41,
+          "return_pct": 6.72,
+          "anchor_date": "2025-12-26",
+          "price_anchor_date": "2025-12-26",
+          "rank": 4
+        },
+        "YTD": {
+          "share_delta_yi": -368.9,
+          "amount_delta_100m": -1909.43,
+          "return_pct": 7.32,
+          "anchor_date": "2025-12-31",
+          "price_anchor_date": "2025-12-31",
+          "rank": 4
+        },
+        "12M": {
+          "share_delta_yi": -376.94,
+          "amount_delta_100m": -1951.03,
+          "return_pct": 27.77,
+          "anchor_date": "2025-06-24",
+          "price_anchor_date": "2025-06-24",
+          "rank": 3
+        }
+      }
+    },
+    {
+      "code": "510300",
+      "name": "沪深300ETF华泰柏瑞",
+      "exchange": "SSE",
+      "category": "宽基",
+      "manager": "华泰柏瑞",
+      "listed_date": null,
+      "scale_100m": 1136.78,
+      "latest_price": 4.967,
+      "latest_share_yi": 228.87,
+      "tag": "止盈",
+      "windows": {
+        "1D": {
+          "share_delta_yi": -17.9,
+          "amount_delta_100m": -88.91,
+          "return_pct": 0.51,
+          "anchor_date": "2026-06-23",
+          "price_anchor_date": "2026-06-23",
+          "rank": 5
+        },
+        "1W": {
+          "share_delta_yi": -41.96,
+          "amount_delta_100m": -208.41,
+          "return_pct": 0.18,
+          "anchor_date": "2026-06-17",
+          "price_anchor_date": "2026-06-17",
+          "rank": 5
+        },
+        "2W": {
+          "share_delta_yi": -56.28,
+          "amount_delta_100m": -279.53,
+          "return_pct": 3.83,
+          "anchor_date": "2026-06-10",
+          "price_anchor_date": "2026-06-10",
+          "rank": 5
+        },
+        "1M": {
+          "share_delta_yi": -55.72,
+          "amount_delta_100m": -276.76,
+          "return_pct": 0.61,
+          "anchor_date": "2026-05-25",
+          "price_anchor_date": "2026-05-25",
+          "rank": 5
+        },
+        "3M": {
+          "share_delta_yi": -222.65,
+          "amount_delta_100m": -1105.91,
+          "return_pct": 10.67,
+          "anchor_date": "2026-03-26",
+          "price_anchor_date": "2026-03-26",
+          "rank": 5
+        },
+        "6M": {
+          "share_delta_yi": -664.26,
+          "amount_delta_100m": -3299.39,
+          "return_pct": 3.83,
+          "anchor_date": "2025-12-26",
+          "price_anchor_date": "2025-12-26",
+          "rank": 5
+        },
+        "YTD": {
+          "share_delta_yi": -659.43,
+          "amount_delta_100m": -3275.39,
+          "return_pct": 4.5,
+          "anchor_date": "2025-12-31",
+          "price_anchor_date": "2025-12-31",
+          "rank": 5
+        },
+        "12M": {
+          "share_delta_yi": -728.45,
+          "amount_delta_100m": -3618.22,
+          "return_pct": 26.19,
+          "anchor_date": "2025-06-24",
+          "price_anchor_date": "2025-06-24",
+          "rank": 4
+        }
+      }
+    }
+  ],
+  "sources": [
+    {
+      "label": "AKShare 公募基金数据",
+      "href": "https://akshare.akfamily.xyz/data/fund/fund_public.html"
+    },
+    {
+      "label": "上交所 ETF 基金规模",
+      "href": "https://www.sse.com.cn/assortment/fund/etf/list/scale/"
+    },
+    {
+      "label": "深交所基金规模日频数据",
+      "href": "http://www.szse.cn/market/fund/volume/etf/index.html"
+    }
+  ]
+}

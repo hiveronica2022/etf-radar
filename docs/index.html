@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ETF 份额雷达</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>ETF 份额雷达</h1>
+          <p id="freshness" class="freshness">加载中</p>
+        </div>
+        <div class="top-actions">
+          <label class="search">
+            <span>⌕</span>
+            <input id="searchInput" type="search" placeholder="搜索基金或代码" autocomplete="off">
+          </label>
+          <label class="auto-toggle" id="autoToggle" title="每 5 分钟自动检查新数据">
+            <input type="checkbox" id="autoRefreshInput" checked>
+            <span>自动更新</span>
+          </label>
+          <button id="refreshButton" class="icon-button" type="button" title="刷新数据">↻</button>
+        </div>
+      </header>
+
+      <section id="kpiGrid" class="kpi-grid" aria-label="核心指标"></section>
+
+      <section class="charts" aria-label="走势与资金流">
+        <div class="group-bar" id="groupBar">
+          <span class="group-label">分组</span>
+          <div class="chip-row" id="groupingChips"></div>
+        </div>
+        <article class="chart-panel trend-panel">
+          <div class="chart-head">
+            <h2>分类走势</h2>
+            <div class="chip-row" id="trendRange"></div>
+          </div>
+          <div id="trendLegend" class="chart-legend"></div>
+          <div class="chart-body" id="trendBody">
+            <svg id="trendChart" viewBox="0 0 960 300" preserveAspectRatio="none" role="img" aria-label="分类走势图"></svg>
+            <div id="trendTooltip" class="chart-tooltip" hidden></div>
+          </div>
+          <p class="chart-note">等权合成：分组内成分 ETF 收盘价在区间起点归一为 100 后取平均。</p>
+        </article>
+        <article class="chart-panel flow-panel">
+          <div class="chart-head">
+            <h2>分类对比</h2>
+            <div class="chip-row" id="flowMetricChips"></div>
+          </div>
+          <div class="chart-subhead">
+            <div class="chip-row" id="flowWindowChips"></div>
+          </div>
+          <div class="chart-body">
+            <svg id="flowChart" viewBox="0 0 460 300" preserveAspectRatio="none" role="img" aria-label="分类对比图"></svg>
+          </div>
+          <p class="chart-note" id="flowNote">板块内 ETF 金额净流入合计，亿元。</p>
+        </article>
+      </section>
+
+      <section class="controls" aria-label="筛选和排序">
+        <div class="segmented" id="flowFilter">
+          <button class="active" type="button" data-flow="all">全部</button>
+          <button type="button" data-flow="inflow">净流入</button>
+          <button type="button" data-flow="outflow">净流出</button>
+        </div>
+        <div class="segmented" id="metricMode">
+          <button class="active" type="button" data-metric="amount_delta_100m">金额</button>
+          <button type="button" data-metric="share_delta_yi">份额</button>
+          <button type="button" data-metric="return_pct">涨跌幅</button>
+        </div>
+        <label class="select-label">
+          <span>板块</span>
+          <select id="categorySelect"></select>
+        </label>
+        <label class="select-label">
+          <span>排序</span>
+          <select id="sortWindow"></select>
+        </label>
+        <button id="sortDirection" class="direction-button" type="button" data-dir="desc">降序</button>
+      </section>
+
+      <section class="table-panel">
+        <div class="table-title">
+          <h2>份额资金流热力表</h2>
+          <span id="rowCount"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="methodology">
+        <h2>口径</h2>
+        <div class="method-grid">
+          <p>份额净流入 = 当前份额 - 窗口起点份额。</p>
+          <p>金额净流入 = 份额净流入 × 当前净值或收盘价。</p>
+          <p>窗口锚点遇到节假日或停牌时，取目标日前最近一个可用交易日。</p>
+          <p>金额净流入是申赎份额变化估算，不等同于二级市场成交额。</p>
+        </div>
+        <div id="sources" class="sources"></div>
+      </section>
+    </main>
+    <script>window.__SNAPSHOT_URL__ = "dashboard_snapshot.json";</script>
+    <script src="app.js"></script>
+  </body>
+</html>
