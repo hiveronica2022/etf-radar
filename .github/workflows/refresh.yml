@@ -80,7 +80,10 @@ jobs:
             echo "published as_of ${as_of}"
           fi
 
-      - name: Skip note
+      # 抓取不完整（数据源不可达/部分失败）视为失败，触发 GitHub 默认的失败邮件通知；
+      # 线上数据不会被覆盖（上一步已按 missing==0 门控）。数据「无变化」仍算成功，不误报。
+      - name: Fail if incomplete
         if: ${{ steps.check.outputs.missing != '0' }}
         run: |
-          echo "::warning::云端抓取不完整（missing=${{ steps.check.outputs.missing }}），已跳过发布，线上数据保持不变"
+          echo "::error::云端抓取不完整（missing=${{ steps.check.outputs.missing }}），未发布，线上数据保持不变"
+          exit 1
