@@ -74,6 +74,8 @@ jobs:
           else
             as_of=$(python -c "import json;print(json.load(open('data/dashboard_snapshot.json'))['meta']['as_of'])")
             git commit -m "data: cloud refresh as_of ${as_of}"
+            # 兼容本机 cron 并发推送：先 rebase 拉取远端再推。
+            git pull --rebase --autostash origin main || true
             git push
             echo "published as_of ${as_of}"
           fi
