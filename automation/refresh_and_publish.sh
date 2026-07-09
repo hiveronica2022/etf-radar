@@ -37,6 +37,8 @@ fi
 
 as_of="$("$PYTHON" -c "import json;print(json.load(open('data/dashboard_snapshot.json'))['meta']['as_of'])" 2>/dev/null || echo unknown)"
 git commit -m "data: refresh as_of ${as_of}" >/dev/null
+# 先 rebase 拉取远端（可能有 Actions 云端推送），避免非快进冲突。
+git pull --rebase --autostash origin main >/dev/null 2>&1 || true
 if git push 2>&1; then
   echo "published as_of ${as_of}"
 else
