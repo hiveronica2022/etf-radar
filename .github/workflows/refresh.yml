@@ -1,0 +1,84 @@
+name: refresh-data
+
+# 云端定时抓取 ETF 数据并发布到 Pages（电脑不开机也能更新）。
+# 安全阀：只有抓到的数据完整（0 缺失）才提交推送，否则跳过，绝不用坏数据覆盖线上。
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "抓到完整数据时是否提交推送"
+        type: boolean
+        default: true
+  schedule:
+    # 工作日 13:00 UTC = 北京时间 21:00（沪深份额数据晚间发布）
+    - cron: "0 13 * * 1-5"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TQDM_DISABLE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch and build (with source diagnostics)
+        run: |
+          python -m etf_radar.cli refresh \
+            --preset core --preset bond --preset dividend \
+            --window-set full \
+            --retries 4 --retry-sleep 2 --price-pause 0.5 --max-passes 3 \
+            --pages-out docs || echo "refresh exited non-zero (continuing to inspect)"
+
+      - name: Evaluate completeness
+        id: check
+        run: |
+          python - <<'PY'
+          import json, os
+          from etf_radar.metrics import missing_data_codes
+          d = json.load(open("data/dashboard_snapshot.json"))
+          missing = missing_data_codes(d)
+          rows = len(d["rows"])
+          errs = len(d.get("source_errors", []))
+          print(f"rows={rows} missing={len(missing)} source_errors={errs} as_of={d['meta']['as_of']}")
+          if missing:
+              print("missing codes:", " ".join(missing))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"rows={rows}\n")
+              fh.write(f"missing={len(missing)}\n")
+          PY
+
+      - name: Publish if complete
+        if: ${{ steps.check.outputs.missing == '0' && inputs.publish != false }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs data/dashboard_snapshot.json
+          if git diff --cached --quiet; then
+            echo "no changes to publish"
+          else
+            as_of=$(python -c "import json;print(json.load(open('data/dashboard_snapshot.json'))['meta']['as_of'])")
+            git commit -m "data: cloud refresh as_of ${as_of}"
+            git push
+            echo "published as_of ${as_of}"
+          fi
+
+      - name: Skip note
+        if: ${{ steps.check.outputs.missing != '0' }}
+        run: |
+          echo "::warning::云端抓取不完整（missing=${{ steps.check.outputs.missing }}），已跳过发布，线上数据保持不变"
