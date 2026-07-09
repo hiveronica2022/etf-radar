@@ -49,8 +49,10 @@ const SUBCATEGORY_COLORS = {
   国企央企红利: "#c78ae0",
   港股红利: "#e5b567",
   红利质量: "#9b8bd6",
-  // 科技
-  半导体芯片: "#b487f0",
+  // 科技（半导体细分：设备/科创芯片/芯片半导体）
+  半导体设备: "#b487f0",
+  科创芯片: "#8f6fd6",
+  芯片半导体: "#c9a0ff",
   通信: "#58c7dd",
   人工智能: "#f0857d",
   软件计算机: "#7fd1b9",
@@ -209,6 +211,7 @@ function render() {
   if (!state.sortWindow) state.sortWindow = snapshot.windows[0].key;
   renderFreshness(snapshot);
   renderKpis(snapshot);
+  renderDailyChanges(snapshot);
   renderCharts(snapshot);
   renderControls(snapshot);
   renderTable(snapshot);
@@ -284,6 +287,50 @@ function renderKpis(snapshot) {
   document.getElementById("kpiGrid").innerHTML = cards
     .map(([label, value, note]) => `<article class="kpi"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`)
     .join("");
+}
+
+// 「较昨日变化」= 最近 1 个交易日（1D 窗口）的当日看点：领涨/领跌、净申赎最多。
+function renderDailyChanges(snapshot) {
+  const section = document.getElementById("dailySection");
+  const rows = snapshot.rows || [];
+  const val1d = (row, key) => row.windows?.["1D"]?.[key];
+  const withReturn = rows.filter((row) => Number.isFinite(val1d(row, "return_pct")));
+  const withFlow = rows.filter((row) => Number.isFinite(val1d(row, "amount_delta_100m")));
+  if (withReturn.length === 0 && withFlow.length === 0) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+
+  const anchor = snapshot.rows.find((row) => row.windows?.["1D"]?.price_anchor_date)?.windows?.["1D"]?.price_anchor_date;
+  document.getElementById("dailyDate").textContent = anchor ? `对比基准 ${anchor}` : "最近 1 个交易日";
+
+  const pickMax = (list, key) => list.reduce((best, row) => (val1d(row, key) > val1d(best, key) ? row : best), list[0]);
+  const pickMin = (list, key) => list.reduce((best, row) => (val1d(row, key) < val1d(best, key) ? row : best), list[0]);
+
+  const tiles = [];
+  if (withReturn.length) {
+    const up = pickMax(withReturn, "return_pct");
+    const down = pickMin(withReturn, "return_pct");
+    tiles.push(dailyTile("今日领涨", up, formatNumber(val1d(up, "return_pct"), 2, "%"), "up", up.subcategory));
+    tiles.push(dailyTile("今日领跌", down, formatNumber(val1d(down, "return_pct"), 2, "%"), "down", down.subcategory));
+  }
+  if (withFlow.length) {
+    const inflow = pickMax(withFlow, "amount_delta_100m");
+    const outflow = pickMin(withFlow, "amount_delta_100m");
+    tiles.push(dailyTile("净申购最多", inflow, formatNumber(val1d(inflow, "amount_delta_100m"), 1, " 亿"), "up", "较昨日申购"));
+    tiles.push(dailyTile("净赎回最多", outflow, formatNumber(val1d(outflow, "amount_delta_100m"), 1, " 亿"), "down", "较昨日赎回"));
+  }
+  document.getElementById("dailyGrid").innerHTML = tiles.join("");
+}
+
+function dailyTile(label, row, value, dir, sub) {
+  return `<article class="daily-tile">
+    <span class="tile-label">${label}</span>
+    <span class="tile-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</span>
+    <span class="tile-value ${dir}">${value}</span>
+    <span class="tile-sub">${escapeHtml(row.code)}${sub ? ` · ${escapeHtml(sub)}` : ""}</span>
+  </article>`;
 }
 
 function trendCutoffIso(snapshot, rangeKey) {

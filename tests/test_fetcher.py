@@ -257,8 +257,14 @@ class FetcherTest(unittest.TestCase):
         for name, expected in cases.items():
             self.assertEqual(classify_subcategory(name, "红利"), expected, name)
 
+    def test_classify_subcategory_splits_semiconductor_subflavors(self):
+        self.assertEqual(classify_subcategory("芯片ETF华夏", "科技"), "芯片半导体")
+        self.assertEqual(classify_subcategory("半导体ETF国联安", "科技"), "芯片半导体")
+        self.assertEqual(classify_subcategory("半导体设备ETF国泰", "科技"), "半导体设备")
+        self.assertEqual(classify_subcategory("科创芯片ETF嘉实", "科技"), "科创芯片")
+        self.assertEqual(classify_subcategory("科创半导体ETF华夏", "科技"), "科创芯片")
+
     def test_classify_subcategory_covers_tech_bond_broad(self):
-        self.assertEqual(classify_subcategory("芯片ETF华夏", "科技"), "半导体芯片")
         self.assertEqual(classify_subcategory("通信ETF国泰", "科技"), "通信")
         self.assertEqual(classify_subcategory("人工智能ETF易方达", "科技"), "人工智能")
         self.assertEqual(classify_subcategory("十年国债ETF", "债券"), "利率债")
