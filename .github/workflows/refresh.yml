@@ -39,11 +39,14 @@ jobs:
 
       - name: Fetch and build (with source diagnostics)
         run: |
-          python -m etf_radar.cli refresh \
+          # 用 timeout 硬性封顶：若数据源在 runner 上挂起，20 分钟后中止，
+          # 让后续完整性检查判为不完整并使 run 失败（触发邮件），
+          # 而不是耗满 30 分钟 job 超时后 cancelled（不发通知）。
+          timeout 1200 python -m etf_radar.cli refresh \
             --preset core --preset bond --preset dividend \
             --window-set full \
-            --retries 4 --retry-sleep 2 --price-pause 0.5 --max-passes 3 \
-            --pages-out docs || echo "refresh exited non-zero (continuing to inspect)"
+            --retries 3 --retry-sleep 2 --price-pause 0.5 --max-passes 2 \
+            --pages-out docs || echo "refresh exited non-zero/超时（继续做完整性检查）"
 
       - name: Evaluate completeness
         id: check
