@@ -63,8 +63,11 @@ jobs:
               fh.write(f"missing={len(missing)}\n")
           PY
 
+      # 定时触发时 inputs.publish 为 null（GitHub 表达式里 null 与 false 都当 0，
+      # 故不能写 inputs.publish != false，否则定时运行会被判为不发布）。改为：
+      # 数据完整 且（非手动触发 或 手动且勾选发布）。
       - name: Publish if complete
-        if: ${{ steps.check.outputs.missing == '0' && inputs.publish != false }}
+        if: ${{ steps.check.outputs.missing == '0' && (github.event_name != 'workflow_dispatch' || inputs.publish) }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
