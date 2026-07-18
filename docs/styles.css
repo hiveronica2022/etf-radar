@@ -365,6 +365,10 @@ h2 {
   border-radius: 2px;
 }
 
+.swatch.dashed {
+  background: repeating-linear-gradient(90deg, #a8b8c0 0 4px, transparent 4px 7px) !important;
+}
+
 .chart-body {
   position: relative;
   margin-top: 12px;

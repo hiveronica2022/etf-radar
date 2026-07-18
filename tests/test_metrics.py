@@ -161,6 +161,36 @@ class MetricsTest(unittest.TestCase):
         # 涨跌幅复权后接近 0，而不是 -50%
         self.assertAlmostEqual(row["windows"]["1D"]["return_pct"], 0.0, places=1)
 
+    def test_build_snapshot_emits_benchmark_trimmed_at_as_of(self):
+        snapshot = build_snapshot(
+            master=[{"code": "510300", "name": "沪深300ETF华泰柏瑞"}],
+            prices=[{"code": "510300", "date": date(2026, 7, 17), "close": 4.4}],
+            shares=[{"code": "510300", "date": date(2026, 7, 17), "shares_yi": 100.0}],
+            as_of=date(2026, 7, 17),
+            windows=[{"key": "1D", "label": "最近1日", "days": 1}],
+            benchmark=[
+                {"date": date(2026, 7, 16), "close": 4600.0},
+                {"date": date(2026, 7, 17), "close": 4529.0},
+                {"date": date(2026, 7, 18), "close": 4550.0},  # 晚于 as_of，应被裁掉
+            ],
+        )
+
+        benchmark = snapshot["benchmark"]
+        self.assertEqual(benchmark["name"], "沪深300指数")
+        self.assertEqual(benchmark["dates"], ["2026-07-16", "2026-07-17"])
+        self.assertEqual(benchmark["closes"], [4600.0, 4529.0])
+
+    def test_build_snapshot_benchmark_none_when_missing(self):
+        snapshot = build_snapshot(
+            master=[{"code": "510300", "name": "沪深300ETF华泰柏瑞"}],
+            prices=[{"code": "510300", "date": date(2026, 7, 17), "close": 4.4}],
+            shares=[{"code": "510300", "date": date(2026, 7, 17), "shares_yi": 100.0}],
+            as_of=date(2026, 7, 17),
+            windows=[{"key": "1D", "label": "最近1日", "days": 1}],
+        )
+
+        self.assertIsNone(snapshot["benchmark"])
+
     def test_build_snapshot_emits_price_trends_trimmed_at_as_of(self):
         snapshot = build_snapshot(
             master=[

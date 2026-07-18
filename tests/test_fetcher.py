@@ -260,8 +260,12 @@ class FetcherTest(unittest.TestCase):
         self.assertEqual(classify_category("十年国债ETF"), "债券")
         self.assertEqual(classify_category("人工智能ETF易方达"), "科技")
         self.assertEqual(classify_category("恒生科技ETF华夏"), "科技")
-        self.assertEqual(classify_category("深证100ETF易方达"), "宽基")
-        self.assertEqual(classify_category("科创50ETF华夏"), "宽基")
+        self.assertEqual(classify_category("深证100ETF易方达"), "大盘宽基")
+        self.assertEqual(classify_category("沪深300ETF华泰柏瑞"), "大盘宽基")
+        self.assertEqual(classify_category("上证50ETF华夏"), "大盘宽基")
+        self.assertEqual(classify_category("科创50ETF华夏"), "创业科创")
+        self.assertEqual(classify_category("创业板ETF易方达"), "创业科创")
+        self.assertEqual(classify_category("科创创业ETF嘉实"), "创业科创")
 
     def test_append_missing_code_masters_uses_name_overrides(self):
         master = []
@@ -296,8 +300,11 @@ class FetcherTest(unittest.TestCase):
         self.assertEqual(classify_subcategory("十年国债ETF", "债券"), "利率债")
         self.assertEqual(classify_subcategory("可转债ETF", "债券"), "可转债")
         self.assertEqual(classify_subcategory("科创债ETF嘉实", "债券"), "科创债")
-        self.assertEqual(classify_subcategory("沪深300ETF华泰柏瑞", "宽基"), "沪深300")
-        self.assertEqual(classify_subcategory("中证1000ETF南方", "宽基"), "中证1000")
+        self.assertEqual(classify_subcategory("沪深300ETF华泰柏瑞", "大盘宽基"), "沪深300")
+        self.assertEqual(classify_subcategory("中证1000ETF南方", "大盘宽基"), "中证1000")
+        self.assertEqual(classify_subcategory("科创50ETF华夏", "创业科创"), "科创板")
+        self.assertEqual(classify_subcategory("创业板50ETF华安", "创业科创"), "创业板")
+        self.assertEqual(classify_subcategory("科创创业ETF嘉实", "创业科创"), "双创")
 
     def test_classify_subcategory_falls_back_to_category(self):
         self.assertEqual(classify_subcategory("某医药ETF", "医药"), "医药")

@@ -268,6 +268,7 @@ def build_snapshot(
     source_errors: list[str] | None = None,
     stale_after_trading_days: int = DEFAULT_STALE_AFTER_TRADING_DAYS,
     beta_pressure: dict[str, Any] | None = None,
+    benchmark: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     windows = windows or DEFAULT_WINDOWS
     generated_at = generated_at or datetime.now(timezone.utc).isoformat()
@@ -357,6 +358,20 @@ def build_snapshot(
             }
         )
 
+    benchmark_series = None
+    if benchmark:
+        points = sorted(
+            (item["date"], item["close"])
+            for item in benchmark
+            if item.get("date") is not None and item.get("close") is not None and item["date"] <= as_of
+        )
+        if len(points) >= 2:
+            benchmark_series = {
+                "name": "沪深300指数",
+                "dates": [item[0].isoformat() for item in points],
+                "closes": [round(float(item[1]), 2) for item in points],
+            }
+
     return {
         "meta": {
             "version": 1,
@@ -376,6 +391,7 @@ def build_snapshot(
         "windows": windows,
         "rows": rows,
         "trends": trends,
+        "benchmark": benchmark_series,
         "rotation": build_rotation(rows, windows),
         "beta_pressure": beta_pressure or empty_beta_pressure(as_of),
         "sources": sources or [],

@@ -232,15 +232,17 @@ def classify_category(name: str) -> str:
         ("证券", "金融"),
         ("银行", "金融"),
         ("红利", "红利"),
-        ("300", "宽基"),
-        ("500", "宽基"),
-        ("1000", "宽基"),
-        ("A50", "宽基"),
-        ("创业板", "宽基"),
-        ("科创", "宽基"),
-        ("深100", "宽基"),
-        ("深证100", "宽基"),
-        ("上证50", "宽基"),
+        # 创业板/科创单独成板块：与大盘宽基波动特征差异太大，混在一起会掩盖大盘真实走势
+        ("创业板", "创业科创"),
+        ("科创", "创业科创"),
+        ("双创", "创业科创"),
+        ("300", "大盘宽基"),
+        ("500", "大盘宽基"),
+        ("1000", "大盘宽基"),
+        ("A50", "大盘宽基"),
+        ("深100", "大盘宽基"),
+        ("深证100", "大盘宽基"),
+        ("上证50", "大盘宽基"),
     ]
     for needle, category in rules:
         if needle in name:
@@ -280,10 +282,7 @@ _SUBCATEGORY_RULES: dict[str, list[tuple[str, str]]] = {
         ("互联网", "互联网科技"),
         ("恒生科技", "互联网科技"),
     ],
-    "宽基": [
-        ("科创", "科创板"),
-        ("创业板", "创业板"),
-        ("双创", "双创"),
+    "大盘宽基": [
         ("深证100", "深证100"),
         ("深100", "深证100"),
         ("A500", "中证A500"),
@@ -293,7 +292,12 @@ _SUBCATEGORY_RULES: dict[str, list[tuple[str, str]]] = {
         ("300", "沪深300"),
         ("上证50", "上证50"),
         ("50", "上证50"),
-        ("深100", "深证100"),
+    ],
+    "创业科创": [
+        ("双创", "双创"),
+        ("科创创业", "双创"),
+        ("创业板", "创业板"),
+        ("科创", "科创板"),
     ],
     "债券": [
         ("可转债", "可转债"),
@@ -500,6 +504,39 @@ def fetch_price_history(ak: Any, master: list[dict[str, Any]], options: FetchOpt
         save_cached_prices(options.cache_dir, code, merged_rows)
         prices.extend(row for row in merged_rows if options.start_date <= row["date"] <= options.as_of)
     return prices
+
+
+# 走势图基准：沪深300 指数（新浪源，一次返回全历史且不受东财限流影响）。
+BENCHMARK_INDEX = {"symbol": "sh000300", "cache_code": "IDX000300", "name": "沪深300指数"}
+
+
+def fetch_benchmark_index(ak: Any, options: FetchOptions) -> list[dict[str, Any]] | None:
+    cached_rows = load_cached_prices(options.cache_dir, BENCHMARK_INDEX["cache_code"])
+    hist_func = getattr(ak, "stock_zh_index_daily", None)
+    fetched_rows: list[dict[str, Any]] = []
+    if hist_func is not None:
+        try:
+            frame = call_with_retries(
+                hist_func,
+                label="沪深300指数",
+                retries=options.price_retries,
+                sleep_seconds=options.retry_sleep_seconds,
+                timeout_seconds=options.source_timeout_seconds,
+                symbol=BENCHMARK_INDEX["symbol"],
+            )
+            for row in _records(frame):
+                row_date = normalize_date(pick(row, ["date", "日期"]))
+                close = parse_number(pick(row, ["close", "收盘"]))
+                if row_date is not None and close is not None:
+                    fetched_rows.append({"code": BENCHMARK_INDEX["cache_code"], "date": row_date, "close": close})
+        except FetchError as exc:
+            if options.strict:
+                raise
+            options.source_errors.append(str(exc))
+    merged_rows = merge_price_rows(cached_rows, fetched_rows)
+    save_cached_prices(options.cache_dir, BENCHMARK_INDEX["cache_code"], merged_rows)
+    in_range = [row for row in merged_rows if options.start_date <= row["date"] <= options.as_of]
+    return in_range or None
 
 
 def fetch_sse_share_for_dates(ak: Any, target_dates: Iterable[date], options: FetchOptions | None = None) -> list[dict[str, Any]]:
@@ -956,6 +993,8 @@ def fetch_snapshot(options: FetchOptions) -> dict[str, Any]:
             options=options,
         )
 
+    benchmark_rows = fetch_benchmark_index(ak, options)
+
     sources = [
         {"label": "AKShare 公募基金数据", "href": "https://akshare.akfamily.xyz/data/fund/fund_public.html"},
         {"label": "上交所 ETF 基金规模", "href": "https://www.sse.com.cn/assortment/fund/etf/list/scale/"},
@@ -979,4 +1018,5 @@ def fetch_snapshot(options: FetchOptions) -> dict[str, Any]:
         source_errors=options.source_errors,
         windows=windows,
         beta_pressure=beta_pressure,
+        benchmark=benchmark_rows,
     )

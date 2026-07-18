@@ -43,6 +43,8 @@ const TREND_RANGES = [
 ];
 
 const CATEGORY_COLORS = {
+  大盘宽基: "#58c7dd",
+  创业科创: "#6fa8f5",
   宽基: "#58c7dd",
   科技: "#b487f0",
   债券: "#f1b64a",
@@ -108,7 +110,7 @@ function rowsForGrouping(rows) {
   return rows.filter((row) => row.category === state.grouping);
 }
 
-const CATEGORY_ORDER = ["宽基", "科技", "红利", "债券", "金融", "医药", "商品", "行业主题"];
+const CATEGORY_ORDER = ["大盘宽基", "创业科创", "宽基", "科技", "红利", "债券", "金融", "医药", "商品", "行业主题"];
 
 // 可用分组选项：板块（默认）+ 数据里子类 ≥2 的板块。
 function availableGroupings(snapshot) {
@@ -440,6 +442,27 @@ function renderTrendChips(snapshot) {
   ).join("");
 }
 
+const BENCHMARK_COLOR = "#a8b8c0";
+
+// 基准指数（沪深300）对齐到图表日期轴并归一为 100，供对照。
+function computeBenchmarkSeries(snapshot, dates) {
+  const benchmark = snapshot.benchmark;
+  if (!benchmark || !benchmark.dates || benchmark.dates.length < 2) return null;
+  const closeByDate = {};
+  for (let i = 0; i < benchmark.dates.length; i += 1) {
+    closeByDate[benchmark.dates[i]] = benchmark.closes[i];
+  }
+  let base = null;
+  const values = dates.map((dateIso) => {
+    const close = closeByDate[dateIso];
+    if (close === undefined) return null;
+    if (base === null) base = close;
+    return (close / base) * 100;
+  });
+  if (values.filter((value) => value !== null).length < 2) return null;
+  return { name: benchmark.name || "沪深300指数", values };
+}
+
 function renderTrendChart(snapshot) {
   const svg = document.getElementById("trendChart");
   const body = document.getElementById("trendBody");
@@ -454,7 +477,9 @@ function renderTrendChart(snapshot) {
     return;
   }
 
+  const benchmark = computeBenchmarkSeries(snapshot, dates);
   const allValues = series.flatMap((item) => item.values.filter((value) => value !== null));
+  if (benchmark) allValues.push(...benchmark.values.filter((value) => value !== null));
   let minValue = Math.min(...allValues);
   let maxValue = Math.max(...allValues);
   const pad = Math.max((maxValue - minValue) * 0.08, 0.5);
@@ -486,6 +511,20 @@ function renderTrendChart(snapshot) {
     parts.push(`<text x="${x}" y="${height - 8}" fill="#9aa7a1" font-size="11" text-anchor="middle">${dates[index].slice(5)}</text>`);
   }
 
+  if (benchmark) {
+    let benchPath = "";
+    let benchPen = false;
+    for (let i = 0; i < benchmark.values.length; i += 1) {
+      if (benchmark.values[i] === null) {
+        benchPen = false;
+        continue;
+      }
+      benchPath += `${benchPen ? "L" : "M"}${xAt(i).toFixed(1)},${yAt(benchmark.values[i]).toFixed(1)}`;
+      benchPen = true;
+    }
+    parts.push(`<path d="${benchPath}" fill="none" stroke="${BENCHMARK_COLOR}" stroke-width="1.6" stroke-dasharray="6 4" stroke-linejoin="round"/>`);
+  }
+
   series.forEach((item, seriesIndex) => {
     const color = categoryColor(item.category, seriesIndex);
     let path = "";
@@ -505,15 +544,21 @@ function renderTrendChart(snapshot) {
   parts.push(`<rect id="trendHover" x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${plotHeight}" fill="transparent"/>`);
   svg.innerHTML = parts.join("");
 
-  document.getElementById("trendLegend").innerHTML = series
-    .map((item, index) => {
-      const last = item.values.at(-1);
-      const pct = last === null ? "--" : `${last - 100 >= 0 ? "+" : ""}${(last - 100).toFixed(1)}%`;
-      return `<span class="legend-item"><span class="swatch" style="background:${categoryColor(item.category, index)}"></span>${escapeHtml(item.category)}（${item.count} 只）${pct}</span>`;
-    })
-    .join("");
+  const legendItems = series.map((item, index) => {
+    const last = item.values.at(-1);
+    const pct = last === null ? "--" : `${last - 100 >= 0 ? "+" : ""}${(last - 100).toFixed(1)}%`;
+    return `<span class="legend-item"><span class="swatch" style="background:${categoryColor(item.category, index)}"></span>${escapeHtml(item.category)}（${item.count} 只）${pct}</span>`;
+  });
+  if (benchmark) {
+    const last = benchmark.values.filter((value) => value !== null).at(-1);
+    const pct = last === undefined ? "--" : `${last - 100 >= 0 ? "+" : ""}${(last - 100).toFixed(1)}%`;
+    legendItems.push(
+      `<span class="legend-item"><span class="swatch dashed"></span>${escapeHtml(benchmark.name)}（基准）${pct}</span>`,
+    );
+  }
+  document.getElementById("trendLegend").innerHTML = legendItems.join("");
 
-  attachTrendHover(svg, { dates, series, xAt, margin, plotWidth, width });
+  attachTrendHover(svg, { dates, series, benchmark, xAt, margin, plotWidth, width });
 }
 
 function attachTrendHover(svg, context) {
@@ -541,7 +586,12 @@ function attachTrendHover(svg, context) {
         return `<div class="tip-row"><span class="tip-label"><span class="swatch" style="background:${categoryColor(item.category, itemIndex)}"></span>${escapeHtml(item.category)}</span><strong>${value >= 0 ? "+" : ""}${value.toFixed(2)}%</strong></div>`;
       })
       .join("");
-    tooltip.innerHTML = `<div class="tip-date">${context.dates[index]}</div>${rows}`;
+    let benchRow = "";
+    if (context.benchmark && context.benchmark.values[index] !== null) {
+      const value = context.benchmark.values[index] - 100;
+      benchRow = `<div class="tip-row"><span class="tip-label"><span class="swatch dashed"></span>${escapeHtml(context.benchmark.name)}</span><strong>${value >= 0 ? "+" : ""}${value.toFixed(2)}%</strong></div>`;
+    }
+    tooltip.innerHTML = `<div class="tip-date">${context.dates[index]}</div>${rows}${benchRow}`;
     tooltip.hidden = false;
     const bodyRect = body.getBoundingClientRect();
     const pixelX = snapX / scaleX;
