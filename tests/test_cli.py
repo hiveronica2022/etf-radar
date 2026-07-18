@@ -77,6 +77,14 @@ class CliTest(unittest.TestCase):
         self.assertEqual(args.command, "refresh")
         self.assertEqual(args.max_passes, 3)
         self.assertTrue(args.no_proxy)
+        self.assertFalse(args.no_beta_pressure)
+        self.assertEqual(args.beta_top_stocks, 120)
+
+    def test_fetch_command_can_disable_beta_pressure(self):
+        args = parse_args(["fetch", "--no-beta-pressure", "--beta-top-stocks", "50"])
+
+        self.assertTrue(args.no_beta_pressure)
+        self.assertEqual(args.beta_top_stocks, 50)
 
 
 if __name__ == "__main__":

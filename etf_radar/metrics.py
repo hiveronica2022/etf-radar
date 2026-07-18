@@ -175,6 +175,86 @@ def _window_metric(
     }
 
 
+def build_rotation(rows: list[dict[str, Any]], windows: list[dict[str, Any]]) -> dict[str, Any]:
+    """按板块聚合资金轮动，供前端展示流入、流出和最大去向。"""
+    windows_by_key: dict[str, Any] = {}
+    for window in windows:
+        key = window["key"]
+        buckets: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            value = row.get("windows", {}).get(key, {}).get("amount_delta_100m")
+            if value is None:
+                continue
+            group = row.get("category") or "未分类"
+            bucket = buckets.setdefault(
+                group,
+                {
+                    "group": group,
+                    "value_100m": 0.0,
+                    "etf_count": 0,
+                    "inflow_count": 0,
+                    "outflow_count": 0,
+                },
+            )
+            bucket["value_100m"] += float(value)
+            bucket["etf_count"] += 1
+            if value > 0:
+                bucket["inflow_count"] += 1
+            elif value < 0:
+                bucket["outflow_count"] += 1
+
+        entries = [
+            {
+                **bucket,
+                "value_100m": round_or_none(bucket["value_100m"], 2),
+            }
+            for bucket in buckets.values()
+        ]
+        entries.sort(key=lambda item: item["value_100m"] or 0, reverse=True)
+
+        inflow_total = sum(item["value_100m"] or 0 for item in entries if (item["value_100m"] or 0) > 0)
+        outflow_total = sum(item["value_100m"] or 0 for item in entries if (item["value_100m"] or 0) < 0)
+        destination = next((item for item in entries if (item["value_100m"] or 0) > 0), None)
+        source = min(entries, key=lambda item: item["value_100m"] or 0, default=None)
+        windows_by_key[key] = {
+            "key": key,
+            "label": window.get("label") or key,
+            "inflow_total_100m": round_or_none(inflow_total, 2),
+            "outflow_total_100m": round_or_none(outflow_total, 2),
+            "net_flow_100m": round_or_none(inflow_total + outflow_total, 2),
+            "largest_destination": destination["group"] if destination else None,
+            "largest_destination_100m": destination["value_100m"] if destination else None,
+            "largest_source": source["group"] if source and (source["value_100m"] or 0) < 0 else None,
+            "largest_source_100m": source["value_100m"] if source and (source["value_100m"] or 0) < 0 else None,
+            "entries": entries,
+        }
+    return {
+        "grouping": "category",
+        "unit": "亿元",
+        "windows": windows_by_key,
+    }
+
+
+def empty_beta_pressure(as_of: date) -> dict[str, Any]:
+    """ETF 持仓穿透维度的标准空态；接入持仓明细后可直接替换 rows/detail。"""
+    return {
+        "status": "unavailable",
+        "as_of": as_of.isoformat(),
+        "holding_as_of": None,
+        "share_as_of": as_of.isoformat(),
+        "reason": "当前 snapshot 未包含 ETF 持仓穿透数据。",
+        "summary": {
+            "stock_count": None,
+            "linked_etf_count": None,
+            "net_position_change_yi_shares": None,
+            "margin_balance_100m": None,
+            "data_status": "待接入持仓",
+        },
+        "rows": [],
+        "history": [],
+    }
+
+
 def build_snapshot(
     *,
     master: list[dict[str, Any]],
@@ -187,6 +267,7 @@ def build_snapshot(
     sources: list[dict[str, str]] | None = None,
     source_errors: list[str] | None = None,
     stale_after_trading_days: int = DEFAULT_STALE_AFTER_TRADING_DAYS,
+    beta_pressure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     windows = windows or DEFAULT_WINDOWS
     generated_at = generated_at or datetime.now(timezone.utc).isoformat()
@@ -288,12 +369,15 @@ def build_snapshot(
                 "amount_delta_100m": "亿元",
                 "return_pct": "%",
                 "scale_100m": "亿元",
+                "rotation_flow_100m": "亿元",
             },
         },
         "summary": summary,
         "windows": windows,
         "rows": rows,
         "trends": trends,
+        "rotation": build_rotation(rows, windows),
+        "beta_pressure": beta_pressure or empty_beta_pressure(as_of),
         "sources": sources or [],
         "source_errors": source_errors or [],
     }

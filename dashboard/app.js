@@ -10,7 +10,21 @@ const state = {
   flowWindow: "1D",
   flowMetric: "amount",
   grouping: "category",
+  rotationWindow: "1W",
+  pressureFilter: "all",
+  pressureSort: "change_amount",
+  selectedPressureCode: null,
   trendsByCode: {},
+};
+
+// β压强表的排序维度：变动金额/今日变动按绝对值降序（最大变动），其余按数值降序。
+const PRESSURE_SORTS = {
+  change_amount: { label: "变动金额", keys: ["change_amount_100m", "today_change_amount_100m"], abs: true },
+  today_change: { label: "今日变动", keys: ["today_change_wan_shares", "position_change_wan_shares", "change_wan_shares"], abs: true },
+  margin: { label: "融资余额", keys: ["margin_balance_100m"], abs: false },
+  short: { label: "融券余额", keys: ["short_balance_100m"], abs: false },
+  etf_count: { label: "ETF 数量", keys: ["linked_etf_count"], abs: false },
+  float_mv: { label: "流通市值", keys: ["float_market_value_100m"], abs: false },
 };
 
 // 分类对比图的三个维度：资金流（窗口相关）、涨跌幅（窗口相关，板块内规模加权）、规模（时点值）。
@@ -213,6 +227,8 @@ function render() {
   renderKpis(snapshot);
   renderDailyChanges(snapshot);
   renderCharts(snapshot);
+  renderRotation(snapshot);
+  renderBetaPressure(snapshot);
   renderControls(snapshot);
   renderTable(snapshot);
   renderSources(snapshot);
@@ -639,6 +655,361 @@ function renderFlowChart(snapshot) {
   svg.innerHTML = parts.join("");
 }
 
+function rotationWindowKey(snapshot) {
+  const windows = snapshot.rotation?.windows || {};
+  if (windows[state.rotationWindow]) return state.rotationWindow;
+  if (windows["1W"]) {
+    state.rotationWindow = "1W";
+    return "1W";
+  }
+  const first = Object.keys(windows)[0];
+  state.rotationWindow = first || "";
+  return state.rotationWindow;
+}
+
+function renderRotation(snapshot) {
+  const section = document.getElementById("rotationSection");
+  const rotation = snapshot.rotation;
+  if (!rotation || !rotation.windows || Object.keys(rotation.windows).length === 0) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  const key = rotationWindowKey(snapshot);
+  const current = rotation.windows[key];
+  const chips = snapshot.windows.filter((item) => rotation.windows[item.key]);
+  document.getElementById("rotationWindowChips").innerHTML = chips
+    .map((item) => `<button type="button" data-window="${item.key}" class="${item.key === key ? "active" : ""}">${item.label.replace("最近", "")}</button>`)
+    .join("");
+
+  const destination = current.largest_destination
+    ? `${escapeHtml(current.largest_destination)} ${formatNumber(current.largest_destination_100m, 1, " 亿")}`
+    : "--";
+  const kpis = [
+    ["流出合计", formatNumber(current.outflow_total_100m, 1, " 亿"), "净赎回板块合计", "down"],
+    ["流入合计", formatNumber(current.inflow_total_100m, 1, " 亿"), "净申购板块合计", "up"],
+    ["净流入", formatNumber(current.net_flow_100m, 1, " 亿"), current.label || key, current.net_flow_100m >= 0 ? "up" : "down"],
+    ["最大去向", destination, "净流入最多板块", "up"],
+  ];
+  document.getElementById("rotationKpis").innerHTML = kpis
+    .map(([label, value, note, tone]) => `<article class="mini-kpi ${tone}"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`)
+    .join("");
+
+  renderRotationChart(current);
+  renderRotationReadout(current);
+}
+
+function renderRotationChart(current) {
+  const svg = document.getElementById("rotationChart");
+  const container = svg.closest(".rotation-chart-wrap");
+  const width = Math.max(container.clientWidth || 960, 360);
+  const entries = (current.entries || [])
+    .filter((item) => Number.isFinite(item.value_100m))
+    .sort((a, b) => a.value_100m - b.value_100m);
+  const negatives = entries.filter((item) => item.value_100m < 0);
+  const positives = entries.filter((item) => item.value_100m >= 0).sort((a, b) => b.value_100m - a.value_100m);
+  const ordered = [...negatives, ...positives];
+  const rowHeight = 38;
+  const margin = { top: 18, right: 130, bottom: 18, left: 130 };
+  const height = Math.max(ordered.length * rowHeight + margin.top + margin.bottom, 170);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.style.height = `${height}px`;
+  if (ordered.length === 0) {
+    svg.innerHTML = `<text x="${width / 2}" y="${height / 2}" fill="#6f7a75" text-anchor="middle">当前窗口暂无板块资金轮动数据</text>`;
+    return;
+  }
+
+  const minValue = Math.min(...ordered.map((item) => item.value_100m), 0);
+  const maxValue = Math.max(...ordered.map((item) => item.value_100m), 0);
+  const plotWidth = width - margin.left - margin.right;
+  const scale = plotWidth / (maxValue - minValue || 1);
+  const zero = margin.left + (0 - minValue) * scale;
+  const parts = [`<line x1="${zero}" y1="${margin.top - 4}" x2="${zero}" y2="${height - margin.bottom + 4}" stroke="#4a534f" stroke-width="1"/>`];
+
+  ordered.forEach((item, index) => {
+    const value = item.value_100m;
+    const y = margin.top + index * rowHeight;
+    const barY = y + 8;
+    const barHeight = rowHeight - 16;
+    const barX = value >= 0 ? zero : zero + value * scale;
+    const barWidth = Math.max(Math.abs(value) * scale, 2);
+    const color = value >= 0 ? "#dc6b74" : "#54b88d";
+    const group = escapeHtml(item.group);
+    parts.push(`<rect x="${barX}" y="${barY}" width="${barWidth}" height="${barHeight}" rx="4" fill="${color}" fill-opacity="0.78"/>`);
+    if (value < 0) {
+      parts.push(`<text x="${Math.max(barX - 8, 10)}" y="${y + rowHeight / 2 + 4}" fill="#f3f7f4" font-size="13" font-weight="700" text-anchor="end">${group}</text>`);
+      parts.push(`<text x="${Math.min(zero - 8, width - 10)}" y="${y + rowHeight / 2 + 4}" fill="${color}" font-size="12" font-weight="800" text-anchor="end">${formatNumber(value, 1)}</text>`);
+    } else {
+      parts.push(`<text x="${Math.min(zero + barWidth + 8, width - 10)}" y="${y + rowHeight / 2 + 4}" fill="#f3f7f4" font-size="13" font-weight="700">${group}</text>`);
+      parts.push(`<text x="${zero + 6}" y="${y + rowHeight / 2 + 4}" fill="${color}" font-size="12" font-weight="800">${formatNumber(value, 1)}</text>`);
+    }
+  });
+  svg.innerHTML = parts.join("");
+}
+
+function renderRotationReadout(current) {
+  const entries = current.entries || [];
+  const positiveGroups = entries.filter((item) => (item.value_100m || 0) > 0).length;
+  const negativeGroups = entries.filter((item) => (item.value_100m || 0) < 0).length;
+  const sourceText = current.largest_source
+    ? `${escapeHtml(current.largest_source)} ${formatNumber(current.largest_source_100m, 1, " 亿")}`
+    : "暂无明显流出板块";
+  const destinationText = current.largest_destination
+    ? `${escapeHtml(current.largest_destination)} ${formatNumber(current.largest_destination_100m, 1, " 亿")}`
+    : "暂无明显流入板块";
+  const breadth = `${positiveGroups} 个板块净流入，${negativeGroups} 个板块净流出`;
+  document.getElementById("rotationReadout").innerHTML = `
+    <h3>解读</h3>
+    <div class="readout-list">
+      <p><span>1</span>主要去向：${destinationText}</p>
+      <p><span>2</span>主要来源：${sourceText}</p>
+      <p><span>3</span>${breadth}</p>
+    </div>
+  `;
+}
+
+function renderBetaPressure(snapshot) {
+  const section = document.getElementById("pressureSection");
+  const data = snapshot.beta_pressure || {};
+  section.hidden = false;
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  renderPressureFreshness(data);
+  renderPressureKpis(data, rows);
+  renderPressureTable(data, rows);
+}
+
+function renderPressureFreshness(data) {
+  const parts = [];
+  if (data.holding_as_of) parts.push(`持仓 ${data.holding_as_of}`);
+  if (data.share_as_of) parts.push(`份额 ${data.share_as_of}`);
+  if (data.method_label) parts.push(data.method_label);
+  if (data.as_of) parts.push(`数据日 ${data.as_of}`);
+  document.getElementById("pressureFreshness").textContent = parts.join(" · ") || data.reason || "持仓穿透数据";
+}
+
+function renderPressureKpis(data, rows) {
+  const summary = data.summary || {};
+  const coverage = data.coverage || {};
+  const linkedEtfs = summary.linked_etf_count ?? rows.reduce((sum, row) => sum + (Number(row.linked_etf_count) || 0), 0);
+  const coverageNote = coverage.eligible_etf_count
+    ? `持仓覆盖 ${coverage.holding_etf_count || 0}/${coverage.eligible_etf_count}`
+    : "样本内合计";
+  const cards = [
+    ["覆盖个股", formatPlain(summary.stock_count ?? rows.length, 0, " 只"), "持仓穿透样本"],
+    ["关联 ETF", formatPlain(linkedEtfs || null, 0, " 只"), coverageNote],
+    ["穿透净变动", formatNumber(summary.net_position_change_yi_shares, 2, " 亿股"), "按份额变化估算"],
+    ["融资余额", formatPlain(summary.margin_balance_100m, 2, " 亿元"), "两融观察"],
+    ["数据状态", escapeHtml(summary.data_status || data.status || "--"), coverage.holding_etf_pct != null ? `ETF 覆盖 ${coverage.holding_etf_pct}%` : data.holding_as_of || "待接入持仓"],
+  ];
+  document.getElementById("pressureKpis").innerHTML = cards
+    .map(([label, value, note]) => `<article class="mini-kpi"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`)
+    .join("");
+}
+
+function pressureMetric(row, keys) {
+  for (const key of keys) {
+    if (row[key] !== null && row[key] !== undefined) return row[key];
+  }
+  return null;
+}
+
+function formatMarginValue(row, key) {
+  if (row.margin_eligible === false) return "非两融";
+  return formatPlain(row[key], 1, " 亿");
+}
+
+function filteredPressureRows(rows) {
+  const query = state.query.trim().toLowerCase();
+  const filtered = rows.filter((row) => {
+    const change = Number(pressureMetric(row, ["today_change_wan_shares", "position_change_wan_shares", "change_wan_shares"]));
+    if (state.pressureFilter === "etf_increase" && !(change > 0)) return false;
+    if (state.pressureFilter === "etf_decrease" && !(change < 0)) return false;
+    if (!query) return true;
+    return `${row.name || ""} ${row.code || ""} ${row.industry || ""}`.toLowerCase().includes(query);
+  });
+  const sort = PRESSURE_SORTS[state.pressureSort] || PRESSURE_SORTS.change_amount;
+  filtered.sort((a, b) => {
+    const av = Number(pressureMetric(a, sort.keys)) || 0;
+    const bv = Number(pressureMetric(b, sort.keys)) || 0;
+    return sort.abs ? Math.abs(bv) - Math.abs(av) : bv - av;
+  });
+  return filtered;
+}
+
+function renderPressureTable(data, rows) {
+  document.querySelectorAll("#pressureFilter button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.pressure === state.pressureFilter);
+  });
+  const sortChips = document.getElementById("pressureSort");
+  if (sortChips) {
+    sortChips.innerHTML = `<span class="sort-label">排序</span>` + Object.entries(PRESSURE_SORTS)
+      .map(([key, meta]) => `<button type="button" data-sort="${key}" class="${key === state.pressureSort ? "active" : ""}">${meta.label}</button>`)
+      .join("");
+  }
+  const filtered = filteredPressureRows(rows);
+  document.getElementById("pressureTableHead").innerHTML = `
+    <tr>
+      <th>#</th>
+      <th class="pressure-name">名称</th>
+      <th>代码</th>
+      <th>关联 ETF</th>
+      <th>穿透持仓</th>
+      <th>当日变动</th>
+      <th>变动金额</th>
+      <th>融资余额</th>
+      <th>融券余额</th>
+      <th>流通股</th>
+      <th>流通市值</th>
+    </tr>
+  `;
+  if (filtered.length === 0) {
+    const message = data.reason || "当前快照未包含 ETF 持仓穿透数据。";
+    document.getElementById("pressureTableBody").innerHTML = `<tr><td colspan="11" class="pressure-empty">${escapeHtml(message)}</td></tr>`;
+    renderPressureDetail(null, data);
+    return;
+  }
+  if (!state.selectedPressureCode || !filtered.some((row) => row.code === state.selectedPressureCode)) {
+    state.selectedPressureCode = filtered[0].code;
+  }
+  document.getElementById("pressureTableBody").innerHTML = filtered
+    .map((row, index) => {
+      const selected = row.code === state.selectedPressureCode ? "selected" : "";
+      return `
+        <tr class="${selected}" data-code="${escapeHtml(row.code)}">
+          <td>${index + 1}</td>
+          <td class="pressure-name"><strong>${escapeHtml(row.name || "--")}</strong><span>${escapeHtml(row.industry || "")}</span></td>
+          <td>${escapeHtml(row.code || "--")}</td>
+          <td>${formatPlain(row.linked_etf_count, 0, " 只")}</td>
+          <td>${formatPlain(pressureMetric(row, ["penetrated_holding_yi_shares", "holding_yi_shares"]), 2, " 亿股")}</td>
+          <td>${formatNumber(pressureMetric(row, ["today_change_wan_shares", "position_change_wan_shares", "change_wan_shares"]), 1, " 万股")}</td>
+          <td>${formatNumber(pressureMetric(row, ["change_amount_100m", "today_change_amount_100m"]), 1, " 亿")}</td>
+          <td>${formatMarginValue(row, "margin_balance_100m")}</td>
+          <td>${formatMarginValue(row, "short_balance_100m")}</td>
+          <td>${formatPlain(row.float_shares_100m, 2, " 亿")}</td>
+          <td>${formatPlain(row.float_market_value_100m, 0, " 亿")}</td>
+        </tr>
+      `;
+    })
+    .join("");
+  renderPressureDetail(filtered.find((row) => row.code === state.selectedPressureCode), data);
+}
+
+function pressureHistoryPoints(data, code) {
+  return (Array.isArray(data.history) ? data.history : [])
+    .map((entry) => {
+      const row = (entry.rows || []).find((item) => item.code === code);
+      return row ? { date: entry.date, value: Number(row.change_amount_100m) } : null;
+    })
+    .filter((item) => item && Number.isFinite(item.value))
+    .slice(-30);
+}
+
+function renderPressureHistory(row, data) {
+  const points = pressureHistoryPoints(data, row.code);
+  if (points.length < 2) {
+    return `
+      <h4>穿透变动历史</h4>
+      <div class="pressure-history-empty">历史将在每日刷新后累积，当前已有 ${points.length} 个数据点。</div>
+    `;
+  }
+  const width = 320;
+  const height = 124;
+  const margin = { top: 12, right: 8, bottom: 24, left: 8 };
+  const maxAbs = Math.max(...points.map((item) => Math.abs(item.value)), 0.01);
+  const zeroY = margin.top + (height - margin.top - margin.bottom) / 2;
+  const slot = (width - margin.left - margin.right) / points.length;
+  const barWidth = Math.max(Math.min(slot * 0.62, 12), 2);
+  const scale = (height - margin.top - margin.bottom) / 2 / maxAbs;
+  const bars = points
+    .map((item, index) => {
+      const barHeight = Math.max(Math.abs(item.value) * scale, 1);
+      const x = margin.left + index * slot + (slot - barWidth) / 2;
+      const y = item.value >= 0 ? zeroY - barHeight : zeroY;
+      const color = item.value >= 0 ? "#dc6b74" : "#54b88d";
+      return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" rx="1" fill="${color}"><title>${escapeHtml(item.date)} ${formatNumber(item.value, 2, " 亿")}</title></rect>`;
+    })
+    .join("");
+  return `
+    <h4>穿透变动历史</h4>
+    <div class="pressure-history-chart">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(row.name || row.code)}穿透变动历史">
+        <line x1="${margin.left}" y1="${zeroY}" x2="${width - margin.right}" y2="${zeroY}" stroke="#46504c" stroke-width="1" />
+        ${bars}
+        <text x="${margin.left}" y="${height - 6}" fill="#82908a" font-size="10">${escapeHtml(points[0].date)}</text>
+        <text x="${width - margin.right}" y="${height - 6}" fill="#82908a" font-size="10" text-anchor="end">${escapeHtml(points[points.length - 1].date)}</text>
+      </svg>
+    </div>
+  `;
+}
+
+function renderPressureContributors(row) {
+  const contributors = Array.isArray(row.contributors) ? row.contributors.slice(0, 5) : [];
+  if (contributors.length === 0) return "";
+  return `
+    <h4>贡献 ETF</h4>
+    <div class="contributor-list">
+      ${contributors
+        .map(
+          (item) => `
+            <div class="contributor-row">
+              <span><strong>${escapeHtml(item.name || item.code)}</strong><small>${escapeHtml(item.code || "")} · 权重 ${formatPlain(item.weight_pct, 2, "%")}</small></span>
+              <b class="${Number(item.change_amount_100m) >= 0 ? "positive" : "negative"}">${formatNumber(item.change_amount_100m, 2, " 亿")}</b>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderPressureDetail(row, data) {
+  const panel = document.getElementById("pressureDetail");
+  if (!row) {
+    panel.innerHTML = `
+      <h3>选中个股</h3>
+      <div class="pressure-empty-card">
+        <strong>暂无穿透样本</strong>
+        <p>${escapeHtml(data.reason || "接入 ETF 持仓明细后将显示个股穿透变动、贡献 ETF 和两融因子。")}</p>
+      </div>
+    `;
+    return;
+  }
+  const factors = row.factors || [
+    { label: "ETF 净增贡献", value: pressureMetric(row, ["etf_increase_wan_shares", "increase_wan_shares"]) },
+    { label: "ETF 净减抵消", value: pressureMetric(row, ["etf_decrease_wan_shares", "decrease_wan_shares"]) },
+    { label: "融资温度", value: row.margin_balance_100m },
+    { label: "样本覆盖", value: row.linked_etf_count },
+  ];
+  const factorMax = Math.max(...factors.map((item) => Math.abs(Number(item.value) || 0)), 1);
+  panel.innerHTML = `
+    <h3>选中个股</h3>
+    <div class="selected-stock">
+      <strong>${escapeHtml(row.name || "--")}</strong>
+      <span>${escapeHtml(row.code || "--")}</span>
+    </div>
+    <p class="selected-note">${formatPlain(row.linked_etf_count, 0, " 只")} 关联 ETF${row.industry ? ` · ${escapeHtml(row.industry)}` : ""}</p>
+    <div class="detail-cards">
+      <article><span>穿透持仓</span><strong>${formatPlain(pressureMetric(row, ["penetrated_holding_yi_shares", "holding_yi_shares"]), 2, " 亿股")}</strong></article>
+      <article><span>当日变动</span><strong>${formatNumber(pressureMetric(row, ["today_change_wan_shares", "position_change_wan_shares", "change_wan_shares"]), 1, " 万股")}</strong></article>
+      <article><span>变动金额</span><strong>${formatNumber(pressureMetric(row, ["change_amount_100m", "today_change_amount_100m"]), 1, " 亿")}</strong></article>
+      <article><span>流通市值</span><strong>${formatPlain(row.float_market_value_100m, 0, " 亿")}</strong></article>
+    </div>
+    ${renderPressureHistory(row, data)}
+    ${renderPressureContributors(row)}
+    <h4>因子分解</h4>
+    <div class="factor-list">
+      ${factors
+        .map((item) => {
+          const value = Number(item.value) || 0;
+          const width = Math.max((Math.abs(value) / factorMax) * 100, value === 0 ? 0 : 4);
+          const tone = value >= 0 ? "positive-bar" : "negative-bar";
+          return `<div class="factor-row"><span>${escapeHtml(item.label)}</span><div><i class="${tone}" style="width:${width}%"></i></div><strong>${formatNumber(value, 1)}</strong></div>`;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
 function renderControls(snapshot) {
   const categories = ["all", ...Array.from(new Set(snapshot.rows.map((row) => row.category || "未分类"))).sort()];
   const category = document.getElementById("categorySelect");
@@ -792,6 +1163,7 @@ function escapeHtml(value) {
 document.getElementById("searchInput").addEventListener("input", (event) => {
   state.query = event.target.value;
   renderTable(state.snapshot);
+  renderBetaPressure(state.snapshot);
 });
 
 document.getElementById("flowFilter").addEventListener("click", (event) => {
@@ -855,11 +1227,44 @@ document.getElementById("flowWindowChips").addEventListener("click", (event) => 
   renderCharts(state.snapshot);
 });
 
+document.getElementById("rotationWindowChips").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-window]");
+  if (!button) return;
+  state.rotationWindow = button.dataset.window;
+  renderRotation(state.snapshot);
+});
+
+document.getElementById("pressureFilter").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-pressure]");
+  if (!button) return;
+  state.pressureFilter = button.dataset.pressure;
+  state.selectedPressureCode = null;
+  renderBetaPressure(state.snapshot);
+});
+
+document.getElementById("pressureSort").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-sort]");
+  if (!button) return;
+  state.pressureSort = button.dataset.sort;
+  state.selectedPressureCode = null;
+  renderBetaPressure(state.snapshot);
+});
+
+document.getElementById("pressureTableBody").addEventListener("click", (event) => {
+  const row = event.target.closest("tr[data-code]");
+  if (!row) return;
+  state.selectedPressureCode = row.dataset.code;
+  renderBetaPressure(state.snapshot);
+});
+
 let chartResizeTimer = null;
 window.addEventListener("resize", () => {
   if (!state.snapshot) return;
   clearTimeout(chartResizeTimer);
-  chartResizeTimer = setTimeout(() => renderCharts(state.snapshot), 160);
+  chartResizeTimer = setTimeout(() => {
+    renderCharts(state.snapshot);
+    renderRotation(state.snapshot);
+  }, 160);
 });
 
 function showError(error) {
@@ -869,5 +1274,9 @@ function showError(error) {
   );
 }
 
-initAutoRefresh();
-loadSnapshot().catch(showError);
+if (window.location.protocol === "file:" && !embeddedSnapshot) {
+  window.location.replace("../dist/etf-radar.html");
+} else {
+  initAutoRefresh();
+  loadSnapshot().catch(showError);
+}

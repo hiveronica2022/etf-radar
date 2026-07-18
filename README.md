@@ -1,6 +1,6 @@
 # ETF 份额雷达
 
-一个本地静态看板，用 ETF 份额变化估算资金流，观察哪些 ETF 在不同时间窗口里被申购、赎回，以及这些资金变化发生在上涨还是下跌阶段。覆盖 A 股主要宽基、科技成长和债券（利率债/信用债/科创债/可转债/短融）三大观察池，除热力表外还提供分类走势对比图、分类资金流对比图和每只 ETF 的迷你走势。
+一个本地静态看板，用 ETF 份额变化估算资金流，观察哪些 ETF 在不同时间窗口里被申购、赎回，以及这些资金变化发生在上涨还是下跌阶段。覆盖 A 股主要宽基、科技成长和债券（利率债/信用债/科创债/可转债/短融）三大观察池，除热力表外还提供分类走势对比图、分类资金流对比图、ETF 资金轮动、ETF β 压强接口和每只 ETF 的迷你走势。
 
 ## 快速预览
 
@@ -57,6 +57,8 @@ python3 -m etf_radar.cli build-html --snapshot data/dashboard_snapshot.json --ou
 - `--retry-sleep 0.5`：重试间隔秒数。
 - `--source-timeout 8`：单次公开源调用超时秒数。
 - `--lookback-days 380`：历史价格回看天数，默认覆盖 12M 窗口。
+- `--no-beta-pressure`：临时跳过 ETF 持仓穿透、个股两融与流通盘抓取；默认接入。
+- `--beta-top-stocks 120`：β 压强输出的个股上限，默认 120。
 
 生成示例数据：
 
@@ -138,6 +140,8 @@ http://127.0.0.1:8765/dashboard/index.html
 - 金额净流入来自份额变化估算，不等同于二级市场成交额，也不构成投资建议。
 - 分类走势：板块内成分 ETF 的日收益取平均后从 100 累乘（等权合成），新上市成员从有数据的第一天开始参与。
 - 分类对比：右侧面板可切换资金流（金额净流入合计）、涨跌幅（按规模加权平均）、规模（最新规模合计）三个维度横向对比各板块。
+- ETF 资金轮动：按板块聚合各窗口金额净流入，拆出流入合计、流出合计、净流入、最大去向，并用左右发散条形图观察资金从哪些板块流向哪些板块。
+- ETF β 压强：用最新公开定期持仓权重与 ETF 份额日变化估算个股穿透持仓、当日变动和变动金额，并合并沪深交易所两融明细及 A 股流通盘。快照会标注持仓报告期、覆盖率和 `定期报告估算`；持仓不是实时披露，不能视为基金当日真实交易。穿透历史从每次日更结果开始保存在 `cache/beta/history.json`。
 - 分组下钻：走势图和对比图顶部的「分组」可从「板块」下钻到某板块的细分子类。例如红利细分为宽口径红利/红利低波/国企央企红利/港股红利，科技细分为半导体设备/科创芯片/芯片半导体/通信/人工智能/软件计算机/电子/互联网科技（半导体单独拆成设备/科创芯片/芯片半导体三类），宽基和债券同理。子类由 `classify_subcategory` 按名称关键词判定。
 - 较昨日变化：KPI 下方的摘要区展示最近 1 个交易日（1D 窗口）的当日看点——今日领涨、领跌、净申购最多、净赎回最多的 ETF，对比基准为快照标注的上一个交易日。
 - 折算处理：ETF 份额折算/拆分会让原始价格单日跳变，涨跌幅和走势用复权价（单日跳变超 30% 视为折算并抹平），规模和最新价仍用原始价。
@@ -151,12 +155,16 @@ http://127.0.0.1:8765/dashboard/index.html
 - 东财 / 新浪 ETF 历史行情 `fund_etf_hist_em` / `fund_etf_hist_sina`：日线收盘价，新浪为限流兜底源。
 - [上交所 ETF 基金规模](https://www.sse.com.cn/assortment/fund/etf/list/scale/) `fund_etf_scale_sse`：含债券 ETF 份额。
 - [深交所基金规模日频数据](http://www.szse.cn/market/fund/volume/etf/index.html) `fund_scale_daily_szse`：含债券 ETF 份额。
+- 天天基金 `fund_portfolio_hold_em`：ETF 最新公开季度股票持仓、持股数、持仓市值和净值权重；按 ETF/年份缓存并定期刷新。
+- [上交所融资融券明细](https://www.sse.com.cn/market/othersdata/margin/detail/) `stock_margin_detail_sse`、[深交所融资融券明细](https://www.szse.cn/disclosure/margin/margin/index.html) `stock_margin_detail_szse`：个股融资余额与融券余量/余额。
+- 东财 `stock_zh_a_spot_em`：个股价格与流通市值；失败时回退新浪 Market Center，并保留相同单位口径。
 
 ## 项目结构
 
 ```text
 etf_radar/
-  metrics.py          # 窗口、金额、涨跌幅、标签、走势序列和 summary 计算
+  metrics.py          # 窗口、金额、涨跌幅、标签、走势序列、资金轮动和 summary 计算
+  beta_pressure.py    # 定期持仓穿透、两融/流通盘归一化、β 压强与历史沉淀
   normalization.py    # 公开数据字段、日期、单位标准化
   price_cache.py      # spot 列表和价格历史缓存
   akshare_fetcher.py  # AKShare 数据采集适配层

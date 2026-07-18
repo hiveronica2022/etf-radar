@@ -19,6 +19,7 @@ class NormalizationTest(unittest.TestCase):
     def test_normalize_share_to_yi_uses_column_units(self):
         self.assertEqual(normalize_share_to_yi(120000, "基金份额(万份)"), 12.0)
         self.assertEqual(normalize_share_to_yi(12.5, "基金份额(亿份)"), 12.5)
+        self.assertEqual(normalize_share_to_yi(3562800, "基金份额(份)"), 0.035628)
         self.assertEqual(normalize_share_to_yi(3300000000, "基金份额"), 33.0)
 
     def test_normalize_date_accepts_common_public_data_shapes(self):

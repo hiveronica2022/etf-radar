@@ -34,6 +34,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      # 跨 run 复用价格/持仓/行情缓存：季报持仓每季度才变，缓存后 β压强抓取几乎零请求，
+      # 大幅降低 runner 上的抓取时长与限流风险。
+      - name: Restore data cache
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: etf-cache-${{ github.run_id }}
+          restore-keys: |
+            etf-cache-
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 

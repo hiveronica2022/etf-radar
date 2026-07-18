@@ -5,3 +5,9 @@ __pycache__/
 .DS_Store
 logs/
 .claude/
+
+# 参考截图（个人素材，勿入库）
+IMG_*.HEIC
+IMG_*.JPG
+IMG_*.jpg
+IMG_*.png

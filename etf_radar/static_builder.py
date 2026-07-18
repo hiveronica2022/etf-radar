@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -32,10 +33,14 @@ def build_pages_site(snapshot_path: Path, output_dir: Path) -> None:
     js = (ROOT / "dashboard" / "app.js").read_text(encoding="utf-8")
     snapshot_text = snapshot_path.read_text(encoding="utf-8")
 
-    # 把快照地址指到同目录，覆盖 app.js 里的本地默认路径。
+    # 用内容哈希给静态资源加版本号，资源变了才失效缓存——避免部署后朋友浏览器
+    # 仍跑旧的 app.js / styles.css。
+    version = hashlib.sha1((css + js).encode("utf-8")).hexdigest()[:8]
+    html = html.replace('href="styles.css"', f'href="styles.css?v={version}"')
+    # 把快照地址指到同目录，覆盖 app.js 里的本地默认路径，同时给 app.js 加版本号。
     html = html.replace(
         "<script src=\"app.js\"></script>",
-        '<script>window.__SNAPSHOT_URL__ = "dashboard_snapshot.json";</script>\n    <script src="app.js"></script>',
+        f'<script>window.__SNAPSHOT_URL__ = "dashboard_snapshot.json";</script>\n    <script src="app.js?v={version}"></script>',
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)

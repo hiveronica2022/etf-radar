@@ -2,12 +2,23 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+import json
+import math
 from pathlib import Path
+import re
 import signal
 from time import sleep
 from typing import Any, Iterable
 
+from .beta_pressure import (
+    build_beta_pressure,
+    latest_holding_records,
+    normalize_holding_records,
+    normalize_margin_rows,
+    normalize_stock_market_rows,
+    update_beta_history,
+)
 from .metrics import DEFAULT_WINDOWS, build_snapshot
 from .presets import ETF_NAME_OVERRIDES
 from .normalization import (
@@ -48,6 +59,9 @@ class FetchOptions:
     strict: bool = False
     source_errors: list[str] = field(default_factory=list)
     windows: list[dict[str, Any]] | None = None
+    include_beta_pressure: bool = True
+    beta_top_stocks: int = 120
+    holding_cache_days: int = 7
 
 
 def _load_akshare():
@@ -526,7 +540,7 @@ def fetch_sse_share_for_dates(ak: Any, target_dates: Iterable[date], options: Fe
                 continue
             share_column = _find_share_column(row)
             row_date = normalize_date(pick(row, ["日期", "交易日期", "date"])) or frame_date
-            share = normalize_share_to_yi(row.get(share_column), share_column)
+            share = normalize_share_to_yi(row.get(share_column), _explicit_share_unit(share_column))
             name = pick(row, ["基金简称", "基金名称", "名称", "name"])
             key = (code, row_date)
             if share is not None and key not in seen:
@@ -582,7 +596,7 @@ def fetch_szse_shares(ak: Any, start_date: date, end_date: date, options: FetchO
             continue
         row_date = normalize_date(pick(row, ["日期", "交易日期", "date"]))
         share_column = _find_share_column(row)
-        share = normalize_share_to_yi(row.get(share_column), share_column)
+        share = normalize_share_to_yi(row.get(share_column), _explicit_share_unit(share_column))
         name = pick(row, ["基金简称", "基金名称", "名称", "name"])
         if row_date is not None and share is not None:
             shares.append({"code": code, "date": row_date, "shares_yi": share, "source": "SZSE", "name": name})
@@ -618,6 +632,14 @@ def _find_share_column(row: dict[str, Any]) -> str:
     return next(iter(row))
 
 
+def _explicit_share_unit(column_name: str) -> str:
+    """沪深交易所 AKShare 接口的无单位“基金份额”字段实际为原始份数。"""
+    normalized = str(column_name).replace("（", "(").replace("）", ")")
+    if "万份" in normalized or "亿份" in normalized or "(万" in normalized or "(亿" in normalized:
+        return normalized
+    return f"{normalized}(份)"
+
+
 def target_dates_for_windows(as_of: date, windows: list[dict[str, Any]] | None = None) -> list[date]:
     result = [as_of]
     for window in windows or DEFAULT_WINDOWS:
@@ -648,6 +670,248 @@ def _dedupe_shares(shares: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     for item in shares:
         deduped[(item["code"], item["date"])] = item
     return list(deduped.values())
+
+
+def _beta_cache_path(options: FetchOptions, *parts: str) -> Path | None:
+    if options.cache_dir is None:
+        return None
+    return options.cache_dir.joinpath("beta", *parts)
+
+
+def _load_json_rows(path: Path | None, max_age_days: int | None = None) -> list[dict[str, Any]]:
+    if path is None or not path.exists():
+        return []
+    if max_age_days is not None:
+        modified = datetime.fromtimestamp(path.stat().st_mtime)
+        if datetime.now() - modified > timedelta(days=max(max_age_days, 0)):
+            return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [dict(item) for item in data if isinstance(item, dict)]
+
+
+def _json_cache_is_fresh(path: Path | None, max_age_days: int) -> bool:
+    if path is None or not path.exists():
+        return False
+    modified = datetime.fromtimestamp(path.stat().st_mtime)
+    return datetime.now() - modified <= timedelta(days=max(max_age_days, 0))
+
+
+def _save_json_rows(path: Path | None, rows: Iterable[dict[str, Any]]) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(list(rows), ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+
+
+def beta_eligible_master(master: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [item for item in master if item.get("category") not in {"债券", "商品", "货币"}]
+
+
+def fetch_beta_holdings(ak: Any, master: list[dict[str, Any]], options: FetchOptions, as_of: date) -> list[dict[str, Any]]:
+    hold_func = _ensure_func(ak, "fund_portfolio_hold_em")
+    result = []
+    for item in beta_eligible_master(master):
+        code = compact_code(item["code"])
+        selected: list[dict[str, Any]] = []
+        for year in (as_of.year, as_of.year - 1):
+            path = _beta_cache_path(options, "holdings", str(year), f"{code}.json")
+            cache_is_fresh = _json_cache_is_fresh(path, options.holding_cache_days)
+            raw_rows = _load_json_rows(path) if cache_is_fresh else []
+            stale_rows = _load_json_rows(path)
+            if not cache_is_fresh:
+                try:
+                    frame = call_with_retries(
+                        hold_func,
+                        label=f"{code} 基金持仓 {year}",
+                        retries=options.source_retries,
+                        sleep_seconds=options.retry_sleep_seconds,
+                        timeout_seconds=options.source_timeout_seconds,
+                        symbol=code,
+                        date=str(year),
+                    )
+                    raw_rows = _records(frame)
+                    _save_json_rows(path, raw_rows)
+                except FetchError as exc:
+                    raw_rows = stale_rows
+                    options.source_errors.append(str(exc))
+            normalized = normalize_holding_records(raw_rows, code)
+            selected = latest_holding_records(normalized, as_of)
+            if selected:
+                break
+        result.extend(selected)
+    return result
+
+
+def _fetch_sina_stock_market_rows(wanted_codes: set[str], options: FetchOptions) -> list[dict[str, Any]]:
+    try:
+        import requests
+    except ImportError as exc:
+        raise FetchError("缺少 requests，无法使用新浪股票行情兜底。") from exc
+
+    count_url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeStockCount?node=hs_a"
+    data_url = "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData"
+
+    def get_count():
+        response = requests.get(count_url, timeout=options.source_timeout_seconds)
+        response.raise_for_status()
+        return response.text
+
+    count_text = call_with_retries(
+        get_count,
+        label="新浪 A 股数量",
+        retries=options.source_retries,
+        sleep_seconds=options.retry_sleep_seconds,
+        timeout_seconds=options.source_timeout_seconds + 2,
+    )
+    match = re.search(r"\d+", count_text)
+    if match is None:
+        raise FetchError("新浪 A 股数量响应无法解析。")
+    pages = math.ceil(int(match.group()) / 100)
+    raw_rows = []
+    found: set[str] = set()
+    for page in range(1, pages + 1):
+        params = {
+            "page": str(page),
+            "num": "100",
+            "sort": "symbol",
+            "asc": "1",
+            "node": "hs_a",
+            "symbol": "",
+            "_s_r_a": "page",
+        }
+
+        def get_page():
+            response = requests.get(data_url, params=params, timeout=options.source_timeout_seconds)
+            response.raise_for_status()
+            return response.json()
+
+        page_rows = call_with_retries(
+            get_page,
+            label=f"新浪 A 股行情第 {page} 页",
+            retries=options.source_retries,
+            sleep_seconds=options.retry_sleep_seconds,
+            timeout_seconds=options.source_timeout_seconds + 2,
+        )
+        if not isinstance(page_rows, list):
+            continue
+        for row in page_rows:
+            code = compact_code(row.get("code"))
+            if code in wanted_codes:
+                raw_rows.append(dict(row))
+                found.add(code)
+        if found >= wanted_codes:
+            break
+    return normalize_stock_market_rows(raw_rows, source="Sina", wanted_codes=wanted_codes)
+
+
+def fetch_beta_stock_market(ak: Any, wanted_codes: set[str], options: FetchOptions, as_of: date) -> list[dict[str, Any]]:
+    path = _beta_cache_path(options, "market", f"{as_of.isoformat()}.json")
+    cached = _load_json_rows(path)
+    if cached and wanted_codes <= {item.get("code") for item in cached}:
+        return [item for item in cached if item.get("code") in wanted_codes]
+
+    rows: list[dict[str, Any]] = []
+    spot_func = getattr(ak, "stock_zh_a_spot_em", None)
+    if spot_func is not None:
+        try:
+            frame = call_with_retries(
+                spot_func,
+                label="东财 A 股行情",
+                retries=min(options.source_retries, 2),
+                sleep_seconds=options.retry_sleep_seconds,
+                timeout_seconds=max(options.source_timeout_seconds, 20),
+            )
+            rows = normalize_stock_market_rows(_records(frame), source="Eastmoney", wanted_codes=wanted_codes)
+        except FetchError as exc:
+            options.source_errors.append(str(exc))
+    if len(rows) < max(1, int(len(wanted_codes) * 0.8)):
+        try:
+            rows = _fetch_sina_stock_market_rows(wanted_codes, options)
+        except FetchError as exc:
+            options.source_errors.append(str(exc))
+            if cached:
+                rows = [item for item in cached if item.get("code") in wanted_codes]
+    _save_json_rows(path, rows)
+    return rows
+
+
+def _fetch_margin_for_exchange(
+    func: Any,
+    *,
+    exchange: str,
+    as_of: date,
+    options: FetchOptions,
+) -> list[dict[str, Any]]:
+    last_error: FetchError | None = None
+    for offset in range(0, 8):
+        target = as_of - timedelta(days=offset)
+        path = _beta_cache_path(options, "margin", f"{target.isoformat()}-{exchange.lower()}.json")
+        cached = _load_json_rows(path)
+        if cached:
+            return cached
+        try:
+            frame = call_with_retries(
+                func,
+                label=f"{exchange} 两融明细 {target.isoformat()}",
+                retries=options.source_retries,
+                sleep_seconds=options.retry_sleep_seconds,
+                timeout_seconds=options.source_timeout_seconds,
+                date=target.strftime("%Y%m%d"),
+            )
+            rows = _records(frame)
+            if rows:
+                _save_json_rows(path, rows)
+                return rows
+        except FetchError as exc:
+            last_error = exc
+    if last_error is not None:
+        options.source_errors.append(str(last_error))
+    return []
+
+
+def fetch_beta_margins(
+    ak: Any,
+    options: FetchOptions,
+    as_of: date,
+    stock_market: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    sse_func = getattr(ak, "stock_margin_detail_sse", None)
+    szse_func = getattr(ak, "stock_margin_detail_szse", None)
+    sse_rows = _fetch_margin_for_exchange(sse_func, exchange="SSE", as_of=as_of, options=options) if sse_func else []
+    szse_rows = _fetch_margin_for_exchange(szse_func, exchange="SZSE", as_of=as_of, options=options) if szse_func else []
+    return normalize_margin_rows(sse_rows, szse_rows, stock_market)
+
+
+def fetch_beta_pressure(
+    ak: Any,
+    *,
+    master: list[dict[str, Any]],
+    prices: list[dict[str, Any]],
+    shares: list[dict[str, Any]],
+    as_of: date,
+    options: FetchOptions,
+) -> dict[str, Any]:
+    holdings = fetch_beta_holdings(ak, master, options, as_of)
+    wanted_codes = {item["stock_code"] for item in holdings}
+    stock_market = fetch_beta_stock_market(ak, wanted_codes, options, as_of) if wanted_codes else []
+    margins = fetch_beta_margins(ak, options, as_of, stock_market) if wanted_codes else []
+    result = build_beta_pressure(
+        master=master,
+        prices=prices,
+        shares=shares,
+        holdings=holdings,
+        stock_market=stock_market,
+        margins=margins,
+        as_of=as_of,
+        top_stocks=options.beta_top_stocks,
+    )
+    result["history"] = update_beta_history(options.cache_dir, result)
+    return result
 
 
 def fetch_snapshot(options: FetchOptions) -> dict[str, Any]:
@@ -681,11 +945,31 @@ def fetch_snapshot(options: FetchOptions) -> dict[str, Any]:
         shares = _dedupe_shares(shares)
     enrich_master_from_shares(master, shares)
 
+    beta_pressure = None
+    if options.include_beta_pressure:
+        beta_pressure = fetch_beta_pressure(
+            ak,
+            master=master,
+            prices=prices,
+            shares=shares,
+            as_of=as_of,
+            options=options,
+        )
+
     sources = [
         {"label": "AKShare 公募基金数据", "href": "https://akshare.akfamily.xyz/data/fund/fund_public.html"},
         {"label": "上交所 ETF 基金规模", "href": "https://www.sse.com.cn/assortment/fund/etf/list/scale/"},
         {"label": "深交所基金规模日频数据", "href": "http://www.szse.cn/market/fund/volume/etf/index.html"},
     ]
+    if options.include_beta_pressure:
+        sources.extend(
+            [
+                {"label": "基金定期持仓（天天基金）", "href": "https://fundf10.eastmoney.com/"},
+                {"label": "上交所融资融券明细", "href": "https://www.sse.com.cn/market/othersdata/margin/detail/"},
+                {"label": "深交所融资融券明细", "href": "https://www.szse.cn/disclosure/margin/margin/index.html"},
+                {"label": "A 股行情与流通市值", "href": "https://vip.stock.finance.sina.com.cn/mkt/#hs_a"},
+            ]
+        )
     return build_snapshot(
         master=master,
         prices=prices,
@@ -694,4 +978,5 @@ def fetch_snapshot(options: FetchOptions) -> dict[str, Any]:
         sources=sources,
         source_errors=options.source_errors,
         windows=windows,
+        beta_pressure=beta_pressure,
     )

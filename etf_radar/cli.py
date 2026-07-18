@@ -43,6 +43,8 @@ def add_fetch_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--price-pause", type=float, default=0.35, help="逐只请求历史价格的间隔秒数，缓解限流，默认 0.35")
     parser.add_argument("--no-sina-fallback", action="store_true", help="禁用新浪历史行情兜底（默认东财失败时启用）")
     parser.add_argument("--window-set", choices=["full", "short"], default="full", help="窗口集合：full=默认全窗口，short=1D/1W/2W/1M")
+    parser.add_argument("--no-beta-pressure", action="store_true", help="跳过 ETF 持仓穿透、个股两融与流通盘数据")
+    parser.add_argument("--beta-top-stocks", type=int, default=120, help="β 压强最多输出个股数，默认 120")
 
 
 def fetch_options_from_args(args: argparse.Namespace) -> FetchOptions:
@@ -61,6 +63,8 @@ def fetch_options_from_args(args: argparse.Namespace) -> FetchOptions:
         use_sina_fallback=not args.no_sina_fallback,
         strict=args.strict,
         windows=windows_for_set(args.window_set),
+        include_beta_pressure=not args.no_beta_pressure,
+        beta_top_stocks=max(args.beta_top_stocks, 1),
     )
 
 

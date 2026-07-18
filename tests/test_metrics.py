@@ -38,7 +38,7 @@ class MetricsTest(unittest.TestCase):
                 "code": "159915",
                 "name": "创业板ETF易方达",
                 "exchange": "SZSE",
-                "category": "宽基",
+                "category": "科技",
                 "manager": "易方达",
             },
         ]
@@ -75,6 +75,14 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(snapshot["summary"]["etf_count"], 2)
         self.assertAlmostEqual(snapshot["summary"]["total_scale_100m"], 534.2)
         self.assertAlmostEqual(snapshot["summary"]["flow_1w_100m"], 4.2)
+        self.assertEqual(snapshot["rotation"]["grouping"], "category")
+        rotation_1w = snapshot["rotation"]["windows"]["1W"]
+        self.assertAlmostEqual(rotation_1w["inflow_total_100m"], 13.2)
+        self.assertAlmostEqual(rotation_1w["outflow_total_100m"], -9.0)
+        self.assertAlmostEqual(rotation_1w["net_flow_100m"], 4.2)
+        self.assertEqual(rotation_1w["largest_destination"], "宽基")
+        self.assertEqual(snapshot["beta_pressure"]["status"], "unavailable")
+        self.assertEqual(snapshot["beta_pressure"]["rows"], [])
 
         first = snapshot["rows"][0]
         self.assertEqual(first["code"], "510300")
@@ -178,6 +186,27 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(trends["510300"]["dates"], ["2026-06-22", "2026-06-24"])
         self.assertEqual(trends["510300"]["closes"], [4.2, 4.4])
         self.assertNotIn("511260", trends)
+
+    def test_build_snapshot_accepts_beta_pressure_payload(self):
+        beta_pressure = {
+            "status": "ready",
+            "as_of": "2026-06-24",
+            "holding_as_of": "2026-03-31",
+            "share_as_of": "2026-06-24",
+            "summary": {"stock_count": 1, "linked_etf_count": 2},
+            "rows": [{"code": "300308", "name": "中际旭创", "linked_etf_count": 2}],
+            "history": [],
+        }
+        snapshot = build_snapshot(
+            master=[{"code": "510300", "name": "沪深300ETF华泰柏瑞"}],
+            prices=[{"code": "510300", "date": date(2026, 6, 24), "close": 4.4}],
+            shares=[{"code": "510300", "date": date(2026, 6, 24), "shares_yi": 103.0}],
+            as_of=date(2026, 6, 24),
+            windows=[{"key": "1D", "label": "最近1日", "days": 1}],
+            beta_pressure=beta_pressure,
+        )
+
+        self.assertEqual(snapshot["beta_pressure"], beta_pressure)
 
 
 if __name__ == "__main__":

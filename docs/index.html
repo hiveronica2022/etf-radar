@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ETF 份额雷达</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=982a5fc3">
   </head>
   <body>
     <main class="shell">
@@ -68,6 +68,48 @@
         </article>
       </section>
 
+      <section class="rotation-section" id="rotationSection" aria-label="ETF 资金轮动">
+        <div class="section-head">
+          <div>
+            <h2>ETF 资金轮动</h2>
+            <p>资金净流入 = 份额变动 × 净值估算</p>
+          </div>
+          <div class="chip-row" id="rotationWindowChips"></div>
+        </div>
+        <div class="rotation-kpis" id="rotationKpis"></div>
+        <div class="rotation-grid">
+          <div class="rotation-chart-wrap">
+            <svg id="rotationChart" viewBox="0 0 960 300" preserveAspectRatio="none" role="img" aria-label="ETF 板块资金轮动图"></svg>
+          </div>
+          <div class="rotation-readout" id="rotationReadout"></div>
+        </div>
+      </section>
+
+      <section class="pressure-section" id="pressureSection" aria-label="ETF β 压强">
+        <div class="section-head">
+          <div>
+            <h2>ETF β 压强</h2>
+            <p id="pressureFreshness">持仓穿透数据</p>
+          </div>
+          <div class="segmented compact" id="pressureFilter">
+            <button class="active" type="button" data-pressure="all">全部</button>
+            <button type="button" data-pressure="etf_increase">ETF 净增</button>
+            <button type="button" data-pressure="etf_decrease">ETF 净减</button>
+          </div>
+        </div>
+        <div class="pressure-kpis" id="pressureKpis"></div>
+        <div class="chip-row pressure-sort" id="pressureSort"></div>
+        <div class="pressure-grid">
+          <div class="pressure-table-wrap">
+            <table class="pressure-table">
+              <thead id="pressureTableHead"></thead>
+              <tbody id="pressureTableBody"></tbody>
+            </table>
+          </div>
+          <aside class="pressure-detail" id="pressureDetail"></aside>
+        </div>
+      </section>
+
       <section class="controls" aria-label="筛选和排序">
         <div class="segmented" id="flowFilter">
           <button class="active" type="button" data-flow="all">全部</button>
@@ -115,6 +157,6 @@
       </section>
     </main>
     <script>window.__SNAPSHOT_URL__ = "dashboard_snapshot.json";</script>
-    <script src="app.js"></script>
+    <script src="app.js?v=982a5fc3"></script>
   </body>
 </html>

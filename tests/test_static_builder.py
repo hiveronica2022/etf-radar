@@ -38,9 +38,36 @@ class StaticBuilderTest(unittest.TestCase):
             self.assertIn('window.__SNAPSHOT_URL__ = "dashboard_snapshot.json"', index)
             # 不是内嵌单文件：不应把整份快照塞进 HTML
             self.assertNotIn("window.__ETF_SNAPSHOT__", index)
+            # 静态资源带内容哈希版本号，部署后不会命中旧缓存
+            self.assertRegex(index, r'app\.js\?v=[0-9a-f]{8}')
+            self.assertRegex(index, r'styles\.css\?v=[0-9a-f]{8}')
+            self.assertNotIn('src="app.js"', index)
 
             embedded = json.loads((out / "dashboard_snapshot.json").read_text(encoding="utf-8"))
             self.assertIn("rows", embedded)
+
+    def test_build_pages_site_version_changes_with_asset_content(self):
+        from etf_radar import static_builder
+
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            snapshot = self._write_snapshot(tmp_path)
+            build_pages_site(snapshot, tmp_path / "a")
+            index_a = (tmp_path / "a" / "index.html").read_text(encoding="utf-8")
+
+            original = (static_builder.ROOT / "dashboard" / "app.js").read_text(encoding="utf-8")
+            try:
+                (static_builder.ROOT / "dashboard" / "app.js").write_text(original + "\n// bump\n", encoding="utf-8")
+                build_pages_site(snapshot, tmp_path / "b")
+                index_b = (tmp_path / "b" / "index.html").read_text(encoding="utf-8")
+            finally:
+                (static_builder.ROOT / "dashboard" / "app.js").write_text(original, encoding="utf-8")
+
+        import re
+
+        ver_a = re.search(r"app\.js\?v=([0-9a-f]{8})", index_a).group(1)
+        ver_b = re.search(r"app\.js\?v=([0-9a-f]{8})", index_b).group(1)
+        self.assertNotEqual(ver_a, ver_b)
 
 
 if __name__ == "__main__":

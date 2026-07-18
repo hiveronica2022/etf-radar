@@ -11,6 +11,7 @@ from etf_radar.akshare_fetcher import (
     classify_subcategory,
     date_probe_ranges,
     enrich_master_from_shares,
+    fetch_beta_holdings,
     fetch_price_history,
     FetchOptions,
     price_fetch_range,
@@ -22,6 +23,31 @@ from etf_radar.price_cache import save_cached_prices
 
 
 class FetcherTest(unittest.TestCase):
+    def test_empty_beta_holdings_are_cached(self):
+        class FakeAk:
+            def __init__(self):
+                self.calls = 0
+
+            def fund_portfolio_hold_em(self, **kwargs):
+                self.calls += 1
+                return []
+
+        with TemporaryDirectory() as tmp:
+            fake = FakeAk()
+            options = FetchOptions(
+                as_of=date(2026, 7, 14),
+                start_date=date(2026, 1, 1),
+                cache_dir=Path(tmp),
+                source_retries=1,
+                retry_sleep_seconds=0,
+            )
+            master = [{"code": "513530", "name": "港股通红利ETF", "category": "红利"}]
+            self.assertEqual(fetch_beta_holdings(fake, master, options, options.as_of), [])
+            self.assertEqual(fake.calls, 2)
+            self.assertEqual(fetch_beta_holdings(fake, master, options, options.as_of), [])
+
+        self.assertEqual(fake.calls, 2)
+
     def test_choose_effective_as_of_uses_latest_common_complete_share_date(self):
         self.assertEqual(
             choose_effective_as_of(

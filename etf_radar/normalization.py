@@ -40,6 +40,8 @@ def normalize_share_to_yi(value: Any, column_name: str = "") -> float | None:
         return number / 10000
     if "亿份" in column or "(亿" in column:
         return number
+    if "(份)" in column or "原始份额" in column:
+        return number / 100_000_000
 
     # Some public sources expose raw share counts without a unit hint.
     if abs(number) >= 10_000_000:
