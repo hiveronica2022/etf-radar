@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>ETF 份额雷达</title>
-    <link rel="stylesheet" href="styles.css?v=af6cedc3">
+    <link rel="stylesheet" href="styles.css?v=9c4fd456">
   </head>
   <body>
     <main class="shell">
@@ -66,6 +66,40 @@
           </div>
           <p class="chart-note" id="flowNote">板块内 ETF 金额净流入合计，亿元。</p>
         </article>
+      </section>
+
+      <section class="quadrant-section" id="quadrantSection" aria-label="资金-价格象限与风险温度">
+        <div class="section-head">
+          <div>
+            <h2>资金-价格象限 · 风险温度</h2>
+            <p>横轴看涨跌、纵轴看资金，一眼分辨追高 / 抄底 / 撤退 / 止盈</p>
+          </div>
+          <div class="chip-row" id="quadrantWindowChips"></div>
+        </div>
+        <div class="quadrant-grid">
+          <article class="chart-panel">
+            <div class="chart-body" id="quadrantBody">
+              <svg id="quadrantChart" viewBox="0 0 640 340" role="img" aria-label="板块资金-价格象限散点图"></svg>
+            </div>
+            <p class="chart-note">气泡大小 = 板块规模；横轴为区间涨跌（规模加权），纵轴为区间净流入。</p>
+          </article>
+          <article class="chart-panel" id="gaugePanel">
+            <div class="gauge-head">
+              <span class="gauge-title">避险温度计</span>
+              <strong id="gaugeValue">--</strong>
+              <span class="gauge-label" id="gaugeLabel">--</span>
+            </div>
+            <div class="gauge-track">
+              <div class="gauge-zone z-defense"></div>
+              <div class="gauge-zone z-neutral"></div>
+              <div class="gauge-zone z-attack"></div>
+              <div class="gauge-needle" id="gaugeNeedle"></div>
+            </div>
+            <div class="gauge-scale"><span>0 避险</span><span>50 中性</span><span>100 进攻</span></div>
+            <div class="gauge-comps" id="gaugeComps"></div>
+            <p class="chart-note" id="gaugeNote"></p>
+          </article>
+        </div>
       </section>
 
       <section class="rotation-section" id="rotationSection" aria-label="ETF 资金轮动">
@@ -152,11 +186,13 @@
           <p>金额净流入 = 份额净流入 × 当前净值或收盘价。</p>
           <p>窗口锚点遇到节假日或停牌时，取目标日前最近一个可用交易日。</p>
           <p>金额净流入是申赎份额变化估算，不等同于二级市场成交额。</p>
+          <p>资金流环比：前一周 = 近2周净流入 − 近1周净流入，仅 1 周窗口展示。</p>
+          <p>避险温度 = 价格风格分与资金偏好分的均值：风格分 = 50+50·tanh(成长−防御收益差/8%)，成长=创业科创+科技、防御=红利+债券；资金分 = 50+50·(股类−债类净流入)/(|股类|+|债类|)。两分相差 ≥40 标记「分歧」。实验性指标。</p>
         </div>
         <div id="sources" class="sources"></div>
       </section>
     </main>
     <script>window.__SNAPSHOT_URL__ = "dashboard_snapshot.json";</script>
-    <script src="app.js?v=af6cedc3"></script>
+    <script src="app.js?v=9c4fd456"></script>
   </body>
 </html>

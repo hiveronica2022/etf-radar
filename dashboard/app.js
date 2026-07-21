@@ -11,6 +11,7 @@ const state = {
   flowMetric: "amount",
   grouping: "category",
   rotationWindow: "1W",
+  quadrantWindow: "1W",
   pressureFilter: "all",
   pressureSort: "change_amount",
   selectedPressureCode: null,
@@ -229,6 +230,7 @@ function render() {
   renderKpis(snapshot);
   renderDailyChanges(snapshot);
   renderCharts(snapshot);
+  renderQuadrantSection(snapshot);
   renderRotation(snapshot);
   renderBetaPressure(snapshot);
   renderControls(snapshot);
@@ -705,6 +707,216 @@ function renderFlowChart(snapshot) {
   svg.innerHTML = parts.join("");
 }
 
+// 按当前分组聚合某窗口的 资金净流入 / 规模加权涨跌 / 板块规模。象限图与温度计共用。
+function groupWindowStats(snapshot, windowKey) {
+  const acc = new Map();
+  for (const row of rowsForGrouping(snapshot.rows)) {
+    const group = groupKeyOf(row);
+    const item = acc.get(group) || { group, flow: 0, retNum: 0, retDen: 0, scale: 0 };
+    const win = row.windows?.[windowKey] || {};
+    if (Number.isFinite(win.amount_delta_100m)) item.flow += win.amount_delta_100m;
+    if (Number.isFinite(win.return_pct) && row.scale_100m) {
+      item.retNum += win.return_pct * row.scale_100m;
+      item.retDen += row.scale_100m;
+    }
+    if (row.scale_100m) item.scale += row.scale_100m;
+    acc.set(group, item);
+  }
+  return Array.from(acc.values())
+    .map((item) => ({
+      group: item.group,
+      flow: item.flow,
+      ret: item.retDen ? item.retNum / item.retDen : null,
+      scale: item.scale,
+    }))
+    .filter((item) => item.ret !== null || item.flow !== 0);
+}
+
+// 板块级(固定 category 口径)资金流；供环比与温度计使用。
+function categoryFlows(snapshot, windowKey) {
+  const acc = new Map();
+  for (const row of snapshot.rows) {
+    const value = row.windows?.[windowKey]?.amount_delta_100m;
+    if (!Number.isFinite(value)) continue;
+    const cat = row.category || "未分类";
+    acc.set(cat, (acc.get(cat) || 0) + value);
+  }
+  return acc;
+}
+
+function renderQuadrantSection(snapshot) {
+  const section = document.getElementById("quadrantSection");
+  if (!snapshot.rows || snapshot.rows.length === 0) {
+    section.hidden = true;
+    return;
+  }
+  if (!snapshot.windows.some((item) => item.key === state.quadrantWindow)) {
+    state.quadrantWindow = snapshot.windows[0].key;
+  }
+  section.hidden = false;
+  document.getElementById("quadrantWindowChips").innerHTML = snapshot.windows
+    .map((item) => `<button type="button" data-window="${item.key}" class="${item.key === state.quadrantWindow ? "active" : ""}">${item.label.replace("最近", "")}</button>`)
+    .join("");
+  renderQuadrantChart(snapshot);
+  renderRiskGauge(snapshot);
+}
+
+const QUADRANT_LABELS = [
+  { corner: "tl", text: "抄底 · 跌+流入" },
+  { corner: "tr", text: "追高 · 涨+流入" },
+  { corner: "bl", text: "撤退 · 跌+流出" },
+  { corner: "br", text: "止盈 · 涨+流出" },
+];
+
+function renderQuadrantChart(snapshot) {
+  const svg = document.getElementById("quadrantChart");
+  const body = document.getElementById("quadrantBody");
+  const width = Math.max(body.clientWidth || 640, 320);
+  const height = 340;
+  const margin = { top: 26, right: 24, bottom: 40, left: 62 };
+  const stats = groupWindowStats(snapshot, state.quadrantWindow).filter((item) => item.ret !== null);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.style.height = `${height}px`;
+  if (stats.length === 0) {
+    svg.innerHTML = `<text x="${width / 2}" y="${height / 2}" fill="#6f7a75" text-anchor="middle">当前窗口暂无数据</text>`;
+    return;
+  }
+
+  const plotW = width - margin.left - margin.right;
+  const plotH = height - margin.top - margin.bottom;
+  const pad = (values, ratio) => {
+    const lo = Math.min(...values, 0);
+    const hi = Math.max(...values, 0);
+    const span = hi - lo || 1;
+    return [lo - span * ratio, hi + span * ratio];
+  };
+  const [xMin, xMax] = pad(stats.map((item) => item.ret), 0.18);
+  const [yMin, yMax] = pad(stats.map((item) => item.flow), 0.18);
+  const xAt = (v) => margin.left + ((v - xMin) / (xMax - xMin)) * plotW;
+  const yAt = (v) => margin.top + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+  const zeroX = xAt(0);
+  const zeroY = yAt(0);
+
+  const parts = [];
+  // 象限浅色底：流入半区偏红、流出半区偏绿（A 股红涨绿跌习惯）
+  parts.push(`<rect x="${margin.left}" y="${margin.top}" width="${plotW}" height="${Math.max(zeroY - margin.top, 0)}" fill="rgba(220,107,116,0.05)"/>`);
+  parts.push(`<rect x="${margin.left}" y="${zeroY}" width="${plotW}" height="${Math.max(margin.top + plotH - zeroY, 0)}" fill="rgba(84,184,141,0.05)"/>`);
+  parts.push(`<line x1="${margin.left}" y1="${zeroY}" x2="${width - margin.right}" y2="${zeroY}" stroke="#4a534f" stroke-width="1"/>`);
+  parts.push(`<line x1="${zeroX}" y1="${margin.top}" x2="${zeroX}" y2="${height - margin.bottom}" stroke="#4a534f" stroke-width="1"/>`);
+
+  for (const { corner, text } of QUADRANT_LABELS) {
+    const x = corner.endsWith("l") ? margin.left + 6 : width - margin.right - 6;
+    const y = corner.startsWith("t") ? margin.top + 14 : height - margin.bottom - 8;
+    const anchor = corner.endsWith("l") ? "start" : "end";
+    parts.push(`<text x="${x}" y="${y}" fill="#6f7a75" font-size="11" text-anchor="${anchor}">${text}</text>`);
+  }
+  parts.push(`<text x="${width - margin.right}" y="${height - 10}" fill="#9aa7a1" font-size="11" text-anchor="end">区间涨跌 % →</text>`);
+  parts.push(`<text x="${margin.left - 46}" y="${margin.top + 10}" fill="#9aa7a1" font-size="11">流入</text>`);
+  parts.push(`<text x="${margin.left - 46}" y="${height - margin.bottom}" fill="#9aa7a1" font-size="11">流出</text>`);
+  parts.push(`<text x="${zeroX + 4}" y="${zeroY - 5}" fill="#6f7a75" font-size="10">0</text>`);
+
+  const maxScale = Math.max(...stats.map((item) => item.scale), 1);
+  stats
+    .sort((a, b) => b.scale - a.scale)
+    .forEach((item, index) => {
+      const cx = xAt(item.ret);
+      const cy = yAt(item.flow);
+      const r = Math.max(7, Math.sqrt(item.scale / maxScale) * 24);
+      const color = categoryColor(item.group, index);
+      const labelRight = cx < margin.left + plotW * 0.6;
+      const lx = labelRight ? cx + r + 6 : cx - r - 6;
+      const anchor = labelRight ? "start" : "end";
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity="0.55" stroke="${color}" stroke-width="1.5"><title>${escapeHtml(item.group)}：${formatNumber(item.ret, 1, "%")}，净流入 ${formatNumber(item.flow, 1, " 亿")}</title></circle>`);
+      parts.push(`<text x="${lx}" y="${cy - 2}" fill="#f3f7f4" font-size="12.5" font-weight="700" text-anchor="${anchor}">${escapeHtml(item.group)}</text>`);
+      parts.push(`<text x="${lx}" y="${cy + 12}" fill="#9aa7a1" font-size="11" text-anchor="${anchor}">${formatNumber(item.ret, 1, "%")} · ${formatNumber(item.flow, 0, "亿")}</text>`);
+    });
+  svg.innerHTML = parts.join("");
+}
+
+// 避险温度计：价格风格分(成长−防御收益差) 与 资金偏好分(股类−债类净流入) 的均值。
+function riskGaugeModel(snapshot) {
+  const windowKey = state.quadrantWindow;
+  const GROWTH = new Set(["创业科创", "科技"]);
+  const DEFENSE = new Set(["红利", "债券"]);
+  let growthNum = 0, growthDen = 0, defenseNum = 0, defenseDen = 0;
+  for (const row of snapshot.rows) {
+    const ret = row.windows?.[windowKey]?.return_pct;
+    if (!Number.isFinite(ret) || !row.scale_100m) continue;
+    if (GROWTH.has(row.category)) { growthNum += ret * row.scale_100m; growthDen += row.scale_100m; }
+    if (DEFENSE.has(row.category)) { defenseNum += ret * row.scale_100m; defenseDen += row.scale_100m; }
+  }
+  if (!growthDen || !defenseDen) return null;
+  const spread = growthNum / growthDen - defenseNum / defenseDen;
+  const styleScore = Math.round(50 + 50 * Math.tanh(spread / 8));
+
+  const flows = categoryFlows(snapshot, windowKey);
+  let equityFlow = 0, bondFlow = 0;
+  for (const [cat, value] of flows) {
+    if (cat === "债券") bondFlow += value;
+    else equityFlow += value;
+  }
+  const denom = Math.abs(equityFlow) + Math.abs(bondFlow);
+  const flowScore = denom ? Math.round(50 + 50 * ((equityFlow - bondFlow) / denom)) : 50;
+
+  const total = Math.round((styleScore + flowScore) / 2);
+  return { total, styleScore, flowScore, spread, equityFlow, bondFlow, diverged: Math.abs(styleScore - flowScore) >= 40 };
+}
+
+function gaugeLabelFor(model) {
+  if (model.diverged) return "分歧";
+  const value = model.total;
+  if (value < 20) return "深度避险";
+  if (value < 40) return "偏避险";
+  if (value <= 60) return "中性";
+  if (value <= 80) return "偏进攻";
+  return "亢奋";
+}
+
+function renderRiskGauge(snapshot) {
+  const panel = document.getElementById("gaugePanel");
+  const model = riskGaugeModel(snapshot);
+  if (!model) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  document.getElementById("gaugeValue").textContent = model.total;
+  document.getElementById("gaugeLabel").textContent = gaugeLabelFor(model);
+  document.getElementById("gaugeNeedle").style.left = `${Math.min(Math.max(model.total, 1), 99)}%`;
+
+  const compBar = (score) => {
+    const color = score >= 50 ? "#dc6b74" : "#54b88d";
+    const left = Math.min(score, 50);
+    const widthPct = Math.abs(score - 50);
+    return `<span class="bar"><i style="left:${left}%;width:${widthPct}%;background:${color}"></i></span>`;
+  };
+  document.getElementById("gaugeComps").innerHTML = `
+    <div class="gauge-comp"><span>价格风格</span>${compBar(model.styleScore)}<strong>${model.styleScore}</strong></div>
+    <div class="gauge-comp"><span>资金偏好</span>${compBar(model.flowScore)}<strong>${model.flowScore}</strong></div>
+  `;
+
+  const spreadText = `成长−防御收益差 ${formatNumber(model.spread, 1, "%")}`;
+  const flowText = `股类净流入 ${formatNumber(model.equityFlow, 0, " 亿")} vs 债类 ${formatNumber(model.bondFlow, 0, " 亿")}`;
+  const divergeText = model.diverged
+    ? `价格${model.styleScore < 50 ? "避险" : "进攻"}而资金${model.flowScore >= 50 ? "进攻" : "避险"}，两者背离——${model.styleScore < 50 && model.flowScore >= 50 ? "典型的越跌越买（抄底）分歧" : "上涨中资金撤离（止盈）分歧"}。`
+    : "价格与资金方向一致。";
+  document.getElementById("gaugeNote").textContent = `${spreadText}；${flowText}。${divergeText}实验性指标，仅供观察。`;
+}
+
+// 本周较上周的资金流环比：前一周 = 近2周 − 近1周。仅 1W 窗口可精确推导。
+function weeklyFlowMomentum(snapshot) {
+  const oneWeek = categoryFlows(snapshot, "1W");
+  const twoWeek = categoryFlows(snapshot, "2W");
+  if (oneWeek.size === 0 || twoWeek.size === 0) return null;
+  const result = new Map();
+  for (const [cat, current] of oneWeek) {
+    if (!twoWeek.has(cat)) continue;
+    const prior = twoWeek.get(cat) - current;
+    result.set(cat, { current, prior, delta: current - prior });
+  }
+  return result.size ? result : null;
+}
+
 function rotationWindowKey(snapshot) {
   const windows = snapshot.rotation?.windows || {};
   if (windows[state.rotationWindow]) return state.rotationWindow;
@@ -745,11 +957,12 @@ function renderRotation(snapshot) {
     .map(([label, value, note, tone]) => `<article class="mini-kpi ${tone}"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`)
     .join("");
 
-  renderRotationChart(current);
-  renderRotationReadout(current);
+  const momentum = key === "1W" ? weeklyFlowMomentum(snapshot) : null;
+  renderRotationChart(current, momentum);
+  renderRotationReadout(current, momentum);
 }
 
-function renderRotationChart(current) {
+function renderRotationChart(current, momentum) {
   const svg = document.getElementById("rotationChart");
   const container = svg.closest(".rotation-chart-wrap");
   const width = Math.max(container.clientWidth || 960, 360);
@@ -785,19 +998,23 @@ function renderRotationChart(current) {
     const barWidth = Math.max(Math.abs(value) * scale, 2);
     const color = value >= 0 ? "#dc6b74" : "#54b88d";
     const group = escapeHtml(item.group);
+    const trend = momentum?.get(item.group);
+    const deltaTspan = trend
+      ? `<tspan dx="8" font-size="11" font-weight="400" fill="${trend.delta >= 0 ? "#e8909a" : "#79cba6"}">较上周${formatNumber(trend.delta, 0)}</tspan>`
+      : "";
     parts.push(`<rect x="${barX}" y="${barY}" width="${barWidth}" height="${barHeight}" rx="4" fill="${color}" fill-opacity="0.78"/>`);
     if (value < 0) {
-      parts.push(`<text x="${Math.max(barX - 8, 10)}" y="${y + rowHeight / 2 + 4}" fill="#f3f7f4" font-size="13" font-weight="700" text-anchor="end">${group}</text>`);
+      parts.push(`<text x="${Math.max(barX - 8, 10)}" y="${y + rowHeight / 2 + 4}" fill="#f3f7f4" font-size="13" font-weight="700" text-anchor="end">${group}${deltaTspan}</text>`);
       parts.push(`<text x="${Math.min(zero - 8, width - 10)}" y="${y + rowHeight / 2 + 4}" fill="${color}" font-size="12" font-weight="800" text-anchor="end">${formatNumber(value, 1)}</text>`);
     } else {
-      parts.push(`<text x="${Math.min(zero + barWidth + 8, width - 10)}" y="${y + rowHeight / 2 + 4}" fill="#f3f7f4" font-size="13" font-weight="700">${group}</text>`);
+      parts.push(`<text x="${Math.min(zero + barWidth + 8, width - 10)}" y="${y + rowHeight / 2 + 4}" fill="#f3f7f4" font-size="13" font-weight="700">${group}${deltaTspan}</text>`);
       parts.push(`<text x="${zero + 6}" y="${y + rowHeight / 2 + 4}" fill="${color}" font-size="12" font-weight="800">${formatNumber(value, 1)}</text>`);
     }
   });
   svg.innerHTML = parts.join("");
 }
 
-function renderRotationReadout(current) {
+function renderRotationReadout(current, momentum) {
   const entries = current.entries || [];
   const positiveGroups = entries.filter((item) => (item.value_100m || 0) > 0).length;
   const negativeGroups = entries.filter((item) => (item.value_100m || 0) < 0).length;
@@ -808,12 +1025,25 @@ function renderRotationReadout(current) {
     ? `${escapeHtml(current.largest_destination)} ${formatNumber(current.largest_destination_100m, 1, " 亿")}`
     : "暂无明显流入板块";
   const breadth = `${positiveGroups} 个板块净流入，${negativeGroups} 个板块净流出`;
+
+  let momentumLine = "";
+  if (momentum && momentum.size) {
+    const ranked = Array.from(momentum.entries()).sort((a, b) => b[1].delta - a[1].delta);
+    const [accName, acc] = ranked[0];
+    const [decName, dec] = ranked[ranked.length - 1];
+    const pieces = [];
+    if (acc.delta > 0) pieces.push(`${escapeHtml(accName)}加速（${formatNumber(acc.prior, 0)}→${formatNumber(acc.current, 0)} 亿）`);
+    if (dec.delta < 0 && decName !== accName) pieces.push(`${escapeHtml(decName)}降温（${formatNumber(dec.prior, 0)}→${formatNumber(dec.current, 0)} 亿）`);
+    if (pieces.length) momentumLine = `<p><span>4</span>环比：${pieces.join("；")}</p>`;
+  }
+
   document.getElementById("rotationReadout").innerHTML = `
     <h3>解读</h3>
     <div class="readout-list">
       <p><span>1</span>主要去向：${destinationText}</p>
       <p><span>2</span>主要来源：${sourceText}</p>
       <p><span>3</span>${breadth}</p>
+      ${momentumLine}
     </div>
   `;
 }
@@ -1261,6 +1491,14 @@ document.getElementById("groupingChips").addEventListener("click", (event) => {
   if (!button) return;
   state.grouping = button.dataset.group;
   renderCharts(state.snapshot);
+  renderQuadrantSection(state.snapshot);
+});
+
+document.getElementById("quadrantWindowChips").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-window]");
+  if (!button) return;
+  state.quadrantWindow = button.dataset.window;
+  renderQuadrantSection(state.snapshot);
 });
 
 document.getElementById("flowMetricChips").addEventListener("click", (event) => {
@@ -1313,6 +1551,7 @@ window.addEventListener("resize", () => {
   clearTimeout(chartResizeTimer);
   chartResizeTimer = setTimeout(() => {
     renderCharts(state.snapshot);
+    renderQuadrantSection(state.snapshot);
     renderRotation(state.snapshot);
   }, 160);
 });
